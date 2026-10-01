@@ -1,0 +1,50 @@
+{
+  "_about": [
+    "Known reds for THIS plugin's tests (UnrealToolbox v1.52+ reads this file in every project that contains the plugin). Only reds reproduced in the Ck home project (CkPlugins) belong here; a red that only one host shows stays in that host's own AutomationGate.json with the host coupling named.",
+    "Seeding rule: red = red in two full gates on one build AND red when run alone; flaky = red in at least one gate and green alone. Remove an entry in the PR that fixes the test."
+  ],
+  "knownReds": [
+    {
+      "test": "Ck.Jolt.Cook.Inspector.Authored.ModuleLifecycle",
+      "status": "red",
+      "reason": "OSCILLATES, listed red on purpose: red in 3 of 4 full gates (G1, G2, G4) and in the G4 flaky re-run alone; passed G3, a solo run and a 2-test slice. As flaky its re-run fails often enough to fail the gate; as red a pass only prints 'Now passing'. Renderer-only (NonNullRHI). Expected 'active-analysis lifecycle fixture mounts the real authored Analyze All action' to be true.",
+      "evidence": "CkPlugins feature/automation-gate-known-reds (CkFoundation 5c5a61d33, CkTests 096ccb07, CkGameplayDebugger 243c0cd4 = their dev tips), UnrealToolbox v1.51, 2 full raw gates on one build 2026-10-01 (G1 3966 run/47 red, G2 3966/49) + a solo fresh-boot run: gates F F P F, alone GREEN, RED (G4 re-run), GREEN (slice)",
+      "added": "2026-10-01"
+    },
+    {
+      "test": "Ck.TextureDebugger.AuthoredWindow",
+      "status": "flaky",
+      "reason": "FLAKY: green alone (renderer pass). 'Physical Refresh click is routed without changing the selected page'. One of six routed-click UI tests that all failed together in G4's renderer pass (only 2 lanes on a loaded machine; 16 renderer-pass failures vs 10-13 in G1-G3) and all passed in G1-G3 - likely one shared environmental cause. Drop the entry if it never recurs.",
+      "evidence": "CkPlugins at the cleaned Ck dev tips (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba), UnrealToolbox v1.52, judged full gates G1-G4 on one build 2026-10-02 (3972 run; 30/29/28/35 red) + a solo fresh-boot run: gates PPPF, solo GREEN",
+      "added": "2026-10-02"
+    },
+    {
+      "test": "Ck.TextureDebugger.Ux.TextureHealthContextMenuTarget",
+      "status": "flaky",
+      "reason": "FLAKY: green alone (renderer pass). 'Context action retains its original row B target after selection changes to A' (CkTextureDebugger_Ux.spec.cpp:581), right after 'OpenClipboard failed with error code 5' - another process held the clipboard.",
+      "evidence": "CkPlugins at the cleaned Ck dev tips (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba), UnrealToolbox v1.52, judged full gates G1-G3 on one build 2026-10-02 (3972 run; 30 / 29 / 28 red): gates PPF, solo GREEN",
+      "added": "2026-10-02"
+    },
+    {
+      "test": "Ck.UiAuthoring.SchedulerDebugger.Inspector.AuthoredComposition",
+      "status": "flaky",
+      "reason": "FLAKY: green alone (renderer pass). 'Repeated authored dependency mounts a real button'. One of six routed-click UI tests that all failed together in G4's renderer pass (only 2 lanes on a loaded machine; 16 renderer-pass failures vs 10-13 in G1-G3) and all passed in G1-G3 - likely one shared environmental cause. Drop the entry if it never recurs.",
+      "evidence": "CkPlugins at the cleaned Ck dev tips (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba), UnrealToolbox v1.52, judged full gates G1-G4 on one build 2026-10-02 (3972 run; 30/29/28/35 red) + a solo fresh-boot run: gates PPPF, solo GREEN",
+      "added": "2026-10-02"
+    },
+    {
+      "test": "Ck.UiAuthoring.StyleLab.InputHudAuthored",
+      "status": "flaky",
+      "reason": "FLAKY: green alone (renderer pass). 'Invalid user-setting draft is rejected without mutation' (CkStyleLab_InputHudAuthored.spec.cpp:373). One of six routed-click UI tests that all failed together in G4's renderer pass (only 2 lanes on a loaded machine; 16 renderer-pass failures vs 10-13 in G1-G3) and all passed in G1-G3 - likely one shared environmental cause. Drop the entry if it never recurs.",
+      "evidence": "CkPlugins at the cleaned Ck dev tips (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba), UnrealToolbox v1.52, judged full gates G1-G4 on one build 2026-10-02 (3972 run; 30/29/28/35 red) + a solo fresh-boot run: gates PPPF, solo GREEN",
+      "added": "2026-10-02"
+    },
+    {
+      "test": "Ck.UiAuthoring.StyleLab.Window",
+      "status": "red",
+      "reason": "Renderer pass: Routed All Tones click does not update the production sample or its checkbox (CkStyleLab_WindowAuthored.spec.cpp:208/210). Oscillates alone (green once, red on the G2 re-run); listed red on purpose so a pass only prints 'Now passing'.",
+      "evidence": "CkPlugins at the cleaned Ck dev tips (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba), UnrealToolbox v1.52, judged full gates G1+G2 on one build 2026-10-02 (3972 run; 30 / 29 red): gates FF, solo GREEN then RED",
+      "added": "2026-10-02"
+    }
+  ]
+}
