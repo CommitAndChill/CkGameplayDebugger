@@ -185,7 +185,7 @@ auto
             { continue; }
 
             ++Present;
-            Enabled += Leg.Get_Enabled() ? 1 : 0;
+            Enabled += Leg.Get_Status() == ECk_ProceduralLeg_Status::Enabled ? 1 : 0;
             Planted += Leg.Get_Foot().Get_Planted() ? 1 : 0;
             Trusted += Leg.Get_Foot().Get_ContactTrusted() ? 1 : 0;
         }

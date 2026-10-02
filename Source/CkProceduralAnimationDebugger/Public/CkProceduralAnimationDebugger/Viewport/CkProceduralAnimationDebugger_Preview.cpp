@@ -249,7 +249,8 @@ auto
         const auto Id = static_cast<uint64>(Index + 1);
         const auto IsSelected = Leg.Get_LegEntityId() == InSelectedLegId;
         const auto Color = IsSelected ? CkStyle::Accent()
-            : Leg.Get_Enabled() ? ck::debug_axes::Get_CategoricalColor(Index)
+            : Leg.Get_Status() == ECk_ProceduralLeg_Status::Enabled ? ck::debug_axes::Get_CategoricalColor(Index)
+            : Leg.Get_Status() == ECk_ProceduralLeg_Status::Detached ? CkStyle::TextDim()
             : CkStyle::TextMute();
         const auto ContactColor = Leg.Get_Foot().Get_ContactTrusted() ? CkStyle::Ok() : CkStyle::Warn();
         const auto Hip = Leg.Get_Targeting().Get_HipWorld() - Origin;

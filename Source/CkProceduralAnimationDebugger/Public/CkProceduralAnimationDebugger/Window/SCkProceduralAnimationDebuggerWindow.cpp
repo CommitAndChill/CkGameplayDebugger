@@ -53,6 +53,20 @@ namespace ck_procedural_debug_window
     }
 
     auto
+        Get_LegStatusName(
+            ECk_ProceduralLeg_Status InStatus)
+        -> const TCHAR*
+    {
+        switch (InStatus)
+        {
+            case ECk_ProceduralLeg_Status::Enabled: return TEXT("Enabled");
+            case ECk_ProceduralLeg_Status::Disabled: return TEXT("Disabled");
+            case ECk_ProceduralLeg_Status::Detached: return TEXT("Detached");
+        }
+        return TEXT("Enabled");
+    }
+
+    auto
         Get_RigState(
             const FCk_ProceduralAnimation_DebugLeg& InLeg)
         -> FString
@@ -422,8 +436,15 @@ auto
     const auto HasSelectedLeg = [WeakModel]() -> bool
     {
         const auto Model = WeakModel.Pin();
-        return Model.IsValid() && ck::IsValid(Model->Get_SelectedLeg());
+        return Model.IsValid() && UCk_Utils_ProceduralLeg_UE::Get_IsAttached(Model->Get_SelectedLeg());
     };
+    const auto IsSelectedLegDetached = [WeakModel]() -> bool
+    {
+        const auto Model = WeakModel.Pin();
+        const auto Leg = Model.IsValid() ? Model->Get_SelectedLeg() : FCk_Handle_ProceduralLeg{};
+        return ck::IsValid(Leg) && UCk_Utils_ProceduralLeg_UE::Get_Status(Leg) == ECk_ProceduralLeg_Status::Detached;
+    };
+    const auto DetachedToolTip = FText::FromString(TEXT("Detached legs take no requests."));
 
     return SNew(SHorizontalBox)
         + SHorizontalBox::Slot().AutoWidth()
@@ -436,9 +457,12 @@ auto
                     && UCk_Utils_ProceduralLeg_UE::Get_EnableDisable(Leg) == ECk_EnableDisable::Disable;
                 return FText::FromString(LegIsDisabled ? TEXT("Enable leg") : TEXT("Disable leg"));
             })
-            .ToolTipText(FText::FromString(TEXT(
-                "Disable the selected leg: it leaves the step schedule and rides rigidly with the body, like a dead limb. "
-                "Press again to enable it; it swings back from where it hangs.")))
+            .ToolTipText_Lambda([IsSelectedLegDetached, DetachedToolTip]()
+            {
+                return IsSelectedLegDetached() ? DetachedToolTip : FText::FromString(TEXT(
+                    "Disable the selected leg: it leaves the step schedule and rides rigidly with the body, like a dead limb. "
+                    "Press again to enable it; it swings back from where it hangs."));
+            })
             .IsEnabled_Lambda(HasSelectedLeg)
             .OnClicked_Lambda([WeakModel]()
             {
@@ -454,10 +478,13 @@ auto
             })]
         + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceS, 0.0f)
         [SNew(SButton).Tag(TEXT("ProceduralAnimation.DetachLeg")).Text(FText::FromString(TEXT("Detach leg")))
-            .ToolTipText(FText::FromString(TEXT(
-                "Detach the selected leg. Its parts are released through OnProceduralLeg_Detached, where the game decides "
-                "whether they ragdoll, and the survivors adapt per the gait's leg-loss policy. Irreversible; the parts "
-                "stay owned by the body.")))
+            .ToolTipText_Lambda([IsSelectedLegDetached, DetachedToolTip]()
+            {
+                return IsSelectedLegDetached() ? DetachedToolTip : FText::FromString(TEXT(
+                    "Detach the selected leg. Its parts are released through OnProceduralLeg_Detached, where the game decides "
+                    "whether they ragdoll, and the survivors adapt per the gait's leg-loss policy. Irreversible; the leg stays "
+                    "in the body's record as detached and its parts stay owned by the body."));
+            })
             .IsEnabled_Lambda(HasSelectedLeg)
             .OnClicked_Lambda([WeakModel]()
             {
@@ -585,8 +612,8 @@ auto
         Item.SelectionTarget = Row.Entity;
         Item.Name = FText::FromString(Row.Label);
         Item.Context = FText::FromString(Summary.Get_EntityId());
-        Item.Summary = FText::FromString(ck::Format_UE(TEXT("{} legs · {} enabled · {} planted"),
-            Summary.Get_LegCount(), Summary.Get_EnabledLegCount(), Summary.Get_PlantedCount()));
+        Item.Summary = FText::FromString(ck::Format_UE(TEXT("{} legs ({} attached, {} enabled) · {} planted"),
+            Summary.Get_LegCount(), Summary.Get_AttachedLegCount(), Summary.Get_EnabledLegCount(), Summary.Get_PlantedCount()));
         Item.Status = FText::FromString(Failed ? TEXT("Failed") : Tracking ? TEXT("Tracking") : TEXT("Pending"));
         Item.Tone = Failed ? ECk_Tone::Err : Tracking ? ECk_Tone::Ok : ECk_Tone::Warn;
         Items.Add(MoveTemp(Item));
@@ -613,12 +640,17 @@ auto
         if (Leg.Get_LegEntityId().IsEmpty())
         { continue; }
 
-        const auto EnabledState = Leg.Get_Enabled() ? TEXT("Enabled") : TEXT("Disabled");
+        const auto IsDetached = Leg.Get_Status() == ECk_ProceduralLeg_Status::Detached;
+        const auto EnabledState = ck_procedural_debug_window::Get_LegStatusName(Leg.Get_Status());
         auto Item = FCkDebug_EvidenceItem{};
         Item.Key = Leg.Get_LegEntityId();
         Item.Source = FText::FromString(Leg.Get_Id().ToString());
-        Item.Headline = FText::FromString(ck::Format_UE(TEXT("{} · {}"), EnabledState, ck_procedural_debug_window::Get_LegState(Leg)));
-        Item.Tone = NOT Leg.Get_Enabled() ? ECk_Tone::Neutral : Leg.Get_Foot().Get_ContactTrusted() ? ECk_Tone::Ok : ECk_Tone::Warn;
+        Item.Headline = IsDetached
+            ? FText::FromString(EnabledState)
+            : FText::FromString(ck::Format_UE(TEXT("{} · {}"), EnabledState, ck_procedural_debug_window::Get_LegState(Leg)));
+        Item.Tone = IsDetached ? ECk_Tone::Neutral
+            : Leg.Get_Status() == ECk_ProceduralLeg_Status::Disabled ? ECk_Tone::Warn
+            : Leg.Get_Foot().Get_ContactTrusted() ? ECk_Tone::Ok : ECk_Tone::Warn;
         Item.RightLabel = FText::FromString(ck::Format_UE(TEXT("{:.0f}%"), Leg.Get_Foot().Get_SwingAlpha() * 100.0f));
         const auto& Rig = Leg.Get_Rig();
         const auto& Freshness = InSample.Get_Freshness();

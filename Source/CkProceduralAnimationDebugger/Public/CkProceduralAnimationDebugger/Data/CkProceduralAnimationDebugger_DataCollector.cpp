@@ -35,7 +35,7 @@ namespace ck_procedural_debug_collector
         -> FCkProceduralAnimationDebugger_Summary
     {
         const auto Gait = UCk_Utils_ProceduralGait_UE::CastChecked(InBody);
-        const auto Legs = UCk_Utils_ProceduralGait_UE::Get_Legs(Gait);
+        const auto Legs = UCk_Utils_ProceduralGait_UE::Get_Legs(Gait, ECk_ProceduralLeg_Filter::NoFilter);
 
         auto HasRig = false;
         auto RigStatus = ECk_ProceduralAnimation_Status::Ready;
@@ -56,6 +56,7 @@ namespace ck_procedural_debug_collector
             .Set_HasRig(HasRig)
             .Set_RigStatus(HasRig ? RigStatus : ECk_ProceduralAnimation_Status::PendingSetup)
             .Set_LegCount(Legs.Num())
+            .Set_AttachedLegCount(UCk_Utils_ProceduralGait_UE::Get_Legs(Gait, ECk_ProceduralLeg_Filter::OnlyAttached).Num())
             .Set_EnabledLegCount(UCk_Utils_ProceduralGait_UE::Get_EnabledLegCount(Gait))
             .Set_PlantedCount(UCk_Utils_ProceduralGait_UE::Get_PlantedCount(Gait));
         return Summary;
@@ -76,6 +77,7 @@ auto
         && _HasRig == InOther._HasRig
         && _RigStatus == InOther._RigStatus
         && _LegCount == InOther._LegCount
+        && _AttachedLegCount == InOther._AttachedLegCount
         && _EnabledLegCount == InOther._EnabledLegCount
         && _PlantedCount == InOther._PlantedCount;
 }

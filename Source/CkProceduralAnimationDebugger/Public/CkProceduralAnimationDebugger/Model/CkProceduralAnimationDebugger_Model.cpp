@@ -225,7 +225,7 @@ auto
     -> bool
 {
     auto Leg = Get_SelectedLeg();
-    if (ck::Is_NOT_Valid(Leg))
+    if (NOT UCk_Utils_ProceduralLeg_UE::Get_IsAttached(Leg))
     { return false; }
 
     UCk_Utils_ProceduralLeg_UE::Request_EnableDisable(Leg, FCk_Request_ProceduralLeg_EnableDisable{InEnableDisable}, {});
@@ -241,12 +241,11 @@ auto
     -> bool
 {
     auto Leg = Get_SelectedLeg();
-    if (ck::Is_NOT_Valid(Leg))
+    if (NOT UCk_Utils_ProceduralLeg_UE::Get_IsAttached(Leg))
     { return false; }
 
     UCk_Utils_ProceduralLeg_UE::Request_Detach(Leg, FCk_Request_ProceduralLeg_Detach{InPartsOwnership}, {});
 
-    // The detached leg leaves the list on its next capture; keeping it focused would point the preview at nothing.
     _SelectedLegId.Reset();
     _OnChanged.Broadcast();
     return true;

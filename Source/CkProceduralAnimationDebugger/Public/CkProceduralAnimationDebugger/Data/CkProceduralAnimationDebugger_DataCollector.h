@@ -24,6 +24,7 @@ private:
     bool _HasRig = false;
     ECk_ProceduralAnimation_Status _RigStatus = ECk_ProceduralAnimation_Status::PendingSetup;
     int32 _LegCount = 0;
+    int32 _AttachedLegCount = 0;
     int32 _EnabledLegCount = 0;
     int32 _PlantedCount = 0;
 
@@ -34,6 +35,7 @@ public:
     CK_PROPERTY(_HasRig);
     CK_PROPERTY(_RigStatus);
     CK_PROPERTY(_LegCount);
+    CK_PROPERTY(_AttachedLegCount);
     CK_PROPERTY(_EnabledLegCount);
     CK_PROPERTY(_PlantedCount);
 
