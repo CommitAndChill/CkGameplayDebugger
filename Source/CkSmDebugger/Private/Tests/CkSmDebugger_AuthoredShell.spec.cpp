@@ -36,6 +36,20 @@ struct FCkSmDebuggerAuthoredShellTestAccess
         }
         return true;
     }
+    static auto FindArrangedHeight(const TSharedRef<SWidget>& InWidget, const FGeometry& InGeometry, const TSharedPtr<SWidget>& InTarget) -> TOptional<float>
+    {
+        if (InWidget == InTarget) { return InGeometry.GetLocalSize().Y; }
+        auto Arranged = FArrangedChildren{EVisibility::Visible};
+        InWidget->ArrangeChildren(InGeometry, Arranged);
+        for (int32 Index = 0; Index < Arranged.Num(); ++Index)
+        {
+            if (const TOptional<float> Height = FindArrangedHeight(Arranged[Index].Widget, Arranged[Index].Geometry, InTarget); Height.IsSet())
+            { return Height; }
+        }
+        return {};
+    }
+    static auto GraphHeight(const SCkSmDebuggerWindow& InWindow, const TSharedRef<SWidget>& InRegion, const FVector2D& InSize) -> TOptional<float>
+    { return FindArrangedHeight(InRegion, FGeometry::MakeRoot(InSize, FSlateLayoutTransform{}), InWindow._GraphMount); }
     static auto Poll(SCkSmDebuggerWindow& InWindow) -> void { InWindow.PollAuthoredShell(0.0, 0.0f); }
     static auto PreExit(FCkSmDebuggerModule& InModule) -> void { InModule.HandleEnginePreExit(); }
     static auto Tab(const FCkSmDebuggerModule& InModule) -> TSharedPtr<SDockTab> { return InModule._DebuggerTab; }
@@ -74,6 +88,10 @@ auto FCkSmDebuggerAuthoredShell::RunTest(const FString&) -> bool
     TestFalse(TEXT("closing preview collapses the retained authored preview pane again"),
         FCkSmDebuggerAuthoredShellTestAccess::IsPreviewEffectivelyVisible(*Window));
     const TSharedRef<SWidget> Main = Shell->GetRegion(TEXT("main"));
+    const auto ShellSize = FVector2D{1600.0f, 1000.0f};
+    const TOptional<float> GraphHeight = FCkSmDebuggerAuthoredShellTestAccess::GraphHeight(*Window, Main, ShellSize);
+    TestTrue(FString::Printf(TEXT("graph fills its pane rather than its desired height (graph %.0f of %.0f)"),
+        GraphHeight.Get(-1.0f), ShellSize.Y), GraphHeight.IsSet() && GraphHeight.GetValue() > ShellSize.Y * 0.5f);
     const int64 Revision = Shell->GetRevision();
     TestTrue(TEXT("compatible reload commits"), Window->TryReload_AuthoredShell(Markup, Stylesheet).Succeeded);
     TestTrue(TEXT("compatible reload preserves the committed main region"), Shell->GetRevision() > Revision && Shell->GetRegion(TEXT("main")) == Main);
