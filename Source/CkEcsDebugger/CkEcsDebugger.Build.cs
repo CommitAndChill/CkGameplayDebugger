@@ -43,6 +43,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkEqs",
             "CkFx",
             "CkGoap",
+            "CkGroundNav",
             "CkGrid",
             "CkInteraction",
             "CkInventory",

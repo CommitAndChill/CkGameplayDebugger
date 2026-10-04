@@ -32,6 +32,7 @@ public class CkDebuggerCommon : CkModuleRules
             "CkIsmRenderer", // ISM-proxy mesh bounds in the shared focus-entity helper (CkDebug_Focus)
             "CkIskmRenderer", // ISKM-proxy detection in the shared viewport picker (CkDebug_ViewportPicker)
             "CkPmg",       // PMG debug-shape exclusion in the shared entity-marker preview + gizmo set
+            "CkResourceLoader",
             "CkSettings",
             "CkSlateLayout", // Shared authored debug-widget registry.
         });
