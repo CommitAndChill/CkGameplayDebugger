@@ -37,6 +37,7 @@ public class CkCrowdDebugger : CkModuleRules
             "CkEditorTools",
 
 			"CkNavigation",
+			"CkGroundNav",
 			"CkVoxelNav",
 			"CkPathNetwork",
 			"CkCrowd",

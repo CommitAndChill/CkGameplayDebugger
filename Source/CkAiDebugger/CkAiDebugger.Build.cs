@@ -15,6 +15,7 @@ public class CkAiDebugger : CkModuleRules
         });
 
         PrivateDependencyModuleNames.AddRange(new string[] { "Projects", "CkCrowd" });
+        PrivateDependencyModuleNames.Add("CkGroundNav");
 
         if (Target.bBuildEditor)
         {

@@ -23,6 +23,7 @@ public class CkEqsDebugger : CkModuleRules
             "CkEqs",
             "CkGrid",         // 2dGridSystem + DebugDraw_Grid for the in-world grid lattice (SimpleGrid / Grid)
             "CkPmg",          // in-world sphere markers + debug lines for the overlay
+            "CkResourceLoader",
 
             "CkDebuggerCommon",
             "CkEditorTools",
