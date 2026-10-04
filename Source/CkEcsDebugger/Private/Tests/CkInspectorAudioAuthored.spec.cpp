@@ -1,5 +1,8 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
+// Keep exported handle declarations intact before exposing fragment fields to the test.
+#include "CkAudio/AudioDirector/CkAudioDirector_Fragment_Data.h"
+
 #define private public
 #include "CkAudio/AudioDirector/CkAudioDirector_Fragment.h"
 #include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
