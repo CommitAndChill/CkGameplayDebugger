@@ -5,6 +5,7 @@
 
 // Timer utils — mirroring CkInspector_Timer.cpp includes
 #include "CkTimer/CkTimer_Utils.h"
+#include "CkEntityDebugOverlay/Provider/CkDebugOverlay_ObservationBank.h"
 
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
@@ -51,7 +52,10 @@ auto FCk_DebugOverlay_Provider_Timer::Get_FieldTags() const -> TArray<FCk_DebugO
 auto FCk_DebugOverlay_Provider_Timer::CanProvide(const FCk_Handle& Entity) const -> bool
 {
     if (ck::Is_NOT_Valid(Entity)) { return false; }
-    return UCk_Utils_Timer_UE::Has_Any(Entity);
+    if (UCk_Utils_Timer_UE::Has_Any(Entity)) { return true; }
+    auto Observation = FCk_DebugOverlay_SourceObservation{};
+    return FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(Entity, Observation) &&
+        NOT Observation.Timers.IsEmpty();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -83,21 +87,45 @@ auto FCk_DebugOverlay_Provider_Timer::Collect(
     TArray<FString> TimerStrings;
     int32 TotalCount = 0;
 
-    UCk_Utils_Timer_UE::ForEach_Timer(Entity,
-        [&TimerStrings, &TotalCount](FCk_Handle_Timer InTimer)
+    if (ck::Is_NOT_Valid(Entity)) { return; }
+    if (UCk_Utils_Timer_UE::Has_Any(Entity))
+    {
+        UCk_Utils_Timer_UE::ForEach_Timer(Entity,
+            [&TimerStrings, &TotalCount](FCk_Handle_Timer InTimer)
+            {
+                ++TotalCount;
+                if (TimerStrings.Num() < MaxInline)
+                {
+                    const auto NameTag = UCk_Utils_Timer_UE::Get_Name(InTimer);
+                    const auto Name    = NameTag.IsValid()
+                        ? NameTag.GetTagName().ToString()
+                        : FString(TEXT("Unnamed"));
+                    const auto State   = UCk_Utils_Timer_UE::Get_CurrentState(InTimer);
+                    TimerStrings.Add(FString::Printf(TEXT("%s(%s)"), *Name,
+                        *StaticEnum<ECk_Timer_State>()->GetNameStringByValue(static_cast<int64>(State))));
+                }
+            });
+    }
+    else
+    {
+        auto Observation = FCk_DebugOverlay_SourceObservation{};
+        if (NOT FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(Entity, Observation))
+        { return; }
+        for (const auto& Fact : Observation.Timers)
         {
             ++TotalCount;
             if (TimerStrings.Num() < MaxInline)
             {
-                const auto NameTag = UCk_Utils_Timer_UE::Get_Name(InTimer);
+                const auto NameTag = Fact.Name;
                 const auto Name    = NameTag.IsValid()
                     ? NameTag.GetTagName().ToString()
                     : FString(TEXT("Unnamed"));
-                const auto State   = UCk_Utils_Timer_UE::Get_CurrentState(InTimer);
+                const auto State   = Fact.State;
                 TimerStrings.Add(FString::Printf(TEXT("%s(%s)"), *Name,
                     *StaticEnum<ECk_Timer_State>()->GetNameStringByValue(static_cast<int64>(State))));
             }
-        });
+        }
+    }
 
     if (TotalCount == 0) { return; }
 
@@ -125,8 +153,18 @@ auto FCk_DebugOverlay_Provider_Timer::Get_CompactToken(
     if (ck::Is_NOT_Valid(Entity)) { return {}; }
 
     int32 Count = 0;
-    UCk_Utils_Timer_UE::ForEach_Timer(Entity,
-        [&Count](FCk_Handle_Timer) { ++Count; });
+    if (UCk_Utils_Timer_UE::Has_Any(Entity))
+    {
+        UCk_Utils_Timer_UE::ForEach_Timer(Entity,
+            [&Count](FCk_Handle_Timer) { ++Count; });
+    }
+    else
+    {
+        auto Observation = FCk_DebugOverlay_SourceObservation{};
+        if (NOT FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(Entity, Observation))
+        { return {}; }
+        Count = Observation.Timers.Num();
+    }
 
     if (Count == 0) { return {}; }
     return FString::Printf(TEXT("Tmr:%d"), Count);
