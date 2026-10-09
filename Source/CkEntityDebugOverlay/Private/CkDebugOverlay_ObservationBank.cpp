@@ -1,4 +1,5 @@
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_ObservationBank.h"
+#include "CkEntityDebugOverlay/Selection/CkDebugOverlay_SourceAdmission.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
@@ -222,7 +223,8 @@ auto FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(
     // OutObservation.Source may alias LocalSource. Keep the input before clearing output.
     const auto Source = LocalSource;
     OutObservation = {};
-    if (NOT IsInGameThread() || NOT IsPassiveLocalSource(Source))
+    if (NOT IsInGameThread() || NOT IsPassiveLocalSource(Source) ||
+        NOT UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(Source))
     { return false; }
 
     const auto WorldRoot = UCk_Utils_EntityLifetime_UE::Get_TransientEntity(Source);
