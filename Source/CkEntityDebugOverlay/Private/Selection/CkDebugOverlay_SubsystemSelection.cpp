@@ -4,6 +4,7 @@
 
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_SelectionSettings.h"
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
+#include "CkEntityDebugOverlay/Selection/CkDebugOverlay_SourceAdmission.h"
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_SelectionHud.h"
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_SelectionPanel.h"
 #include "CkDebuggerCommon/Classification/CkDebug_DepthTransparency.h"
@@ -136,7 +137,8 @@ auto UCk_DebugOverlay_Subsystem::Update_Selection(UWorld* InWorld,
     const auto& Config = Preferences->Get_Config();
     const auto AddNode = [&](const FCk_Handle& InHandle)
     {
-        if (ck::Is_NOT_Valid(InHandle))
+        if (ck::Is_NOT_Valid(InHandle) ||
+            !UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(InHandle))
         { return; }
         auto Node = FNode{};
         Node.Id = SelectionId(InHandle);
@@ -182,6 +184,20 @@ auto UCk_DebugOverlay_Subsystem::Update_Selection(UWorld* InWorld,
             if (Handle != Transient)
             { AddNode(Handle); }
         });
+
+    const auto IsGathered = [this](const FCk_Handle& H) -> bool
+    {
+        if (ck::Is_NOT_Valid(H)) { return false; }
+        const auto* Current = _SelectionHandles.Find(SelectionId(H));
+        return Current != nullptr && *Current == H;
+    };
+    if (!IsGathered(_SelectionLockedEntity)) { _SelectionLockedEntity = {}; }
+    if (!IsGathered(_FocusedEntity)) { _FocusedEntity = {}; }
+    if (!IsGathered(_SelectionRoot))
+    {
+        Set_FamilyVisible(false);
+        _SelectionRoot = {};
+    }
 
     // Remove dead/reused slots without reordering surviving entries. Cached identity includes
     // generation; a newly spawned entity at the same numeric slot is never adopted silently.
@@ -304,7 +320,8 @@ auto UCk_DebugOverlay_Subsystem::Refresh_SelectionSnapshot(bool InSelectBest) ->
     for (const auto& Entry : Entries)
     {
         const auto* Live = _SelectionHandles.Find(Entry.Candidate.Id);
-        if (Live != nullptr && ck::IsValid(Entry.Entity) && *Live == Entry.Entity)
+        if (Live != nullptr && ck::IsValid(Entry.Entity) && *Live == Entry.Entity &&
+            UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(Entry.Entity))
         {
             PreviousIds.Add(Entry.Candidate.Id);
         }
@@ -314,7 +331,7 @@ auto UCk_DebugOverlay_Subsystem::Refresh_SelectionSnapshot(bool InSelectBest) ->
     for (const auto& Candidate : Candidates)
     {
         const auto* Handle = _SelectionHandles.Find(Candidate.Id);
-        if (Handle != nullptr)
+        if (Handle != nullptr && UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(*Handle))
         {
             const auto* Anchor = _SelectionHandles.Find(Candidate.AnchorId);
             FreshEntries.Add(Candidate.Id, {*Handle, Candidate, Anchor != nullptr ? *Anchor : FCk_Handle{}});
@@ -338,7 +355,8 @@ auto UCk_DebugOverlay_Subsystem::Refresh_SelectionSnapshot(bool InSelectBest) ->
     const auto EligibleAim = AimCandidates.FilterByPredicate([&ValidIds](const FCandidateSelection& InCandidate)
         { return ValidIds.Contains(InCandidate.Id); });
     const auto AimId = PickAimCandidate(EligibleAim, Config, _FamilyVisible);
-    if (ck::Is_NOT_Valid(_SelectionLockedEntity))
+    if (ck::Is_NOT_Valid(_SelectionLockedEntity) ||
+        !ValidIds.Contains(SelectionId(_SelectionLockedEntity)))
     { _SelectionLockedEntity = FCk_Handle{}; }
     const auto FocusId = ResolveAimFocus(AimId, SelectionId(_SelectionAimTarget),
         InSelectBest ? InvalidEntityId : SelectionId(_SelectionCycleTarget), ValidIds,
@@ -378,13 +396,15 @@ auto UCk_DebugOverlay_Subsystem::Cycle_Selection(int32 InDirection) -> void
     auto Live = TSet<uint32>{};
     for (const auto& Entry : Entries)
     {
-        if (ck::IsValid(Entry.Entity))
+        if (ck::IsValid(Entry.Entity) &&
+            UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(Entry.Entity))
         { Live.Add(Entry.Candidate.Id); }
     }
     const auto Target = Cycle(Ids, Live, SelectionId(_FocusedEntity), SelectionId(_SelectionRoot), InDirection);
     const auto* Entry = Entries.FindByPredicate([Target](const FSelectionEntry& InEntry)
         { return InEntry.Candidate.Id == Target; });
-    if (Entry == nullptr)
+    if (Entry == nullptr ||
+        !UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(Entry->Entity))
     { return; }
     _FocusedEntity = Entry->Entity;
     _SelectionCycleTarget = Entry->Entity;
@@ -399,7 +419,8 @@ auto UCk_DebugOverlay_Subsystem::Set_FamilyVisible(bool InVisible) -> void
 {
     if (_FamilyVisible == InVisible)
     { return; }
-    if (InVisible && ck::Is_NOT_Valid(_SelectionRoot))
+    if (InVisible && (ck::Is_NOT_Valid(_SelectionRoot) ||
+        !UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(_SelectionRoot)))
     { return; }
     _FamilyVisible = InVisible;
     _FamilySelection.Reset();

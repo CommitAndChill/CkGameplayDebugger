@@ -10,6 +10,7 @@
 #include "CkEntityDebugOverlay/Presentation/CkDebugOverlay_DistanceLod.h"
 #include "CkEntityDebugOverlay/Presentation/CkDebugOverlay_Present.h"
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
+#include "CkEntityDebugOverlay/Selection/CkDebugOverlay_SourceAdmission.h"
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
@@ -535,6 +536,12 @@ auto
     auto Candidates = TArray<ck_debugoverlay::FCandidate>{};
     Update_Selection(World, Viewpoint, CandidateHandles, Candidates);
     auto FocusEntity = _FocusedEntity;
+    if (ck::IsValid(FocusEntity) &&
+        !UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(FocusEntity))
+    {
+        FocusEntity = {};
+        _FocusedEntity = {};
+    }
 
     // ---- 5. Time + double-tap gesture detection ----
     // Input is sampled from the global Slate pre-processor (not PC->WasInputKeyJustPressed)
@@ -871,7 +878,11 @@ auto
     // Prune destroyed pins before deriving the primary card's visual state. When the live
     // focus is itself pinned, the duplicate pinned card below is intentionally omitted, so
     // the primary card must carry the cyan pinned ring instead.
-    _PinnedEntities.RemoveAll([](const FCk_Handle& InPinned){ return ck::Is_NOT_Valid(InPinned); });
+    _PinnedEntities.RemoveAll([](const FCk_Handle& InPinned)
+    {
+        return ck::Is_NOT_Valid(InPinned) ||
+            !UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(InPinned);
+    });
     const auto FocusIsPinned = ck::IsValid(InModel.Entity) && _PinnedEntities.ContainsByPredicate(
         [&InModel](const FCk_Handle& InPinned){ return InPinned == InModel.Entity; });
 
@@ -1011,8 +1022,12 @@ auto
         Refresh_SelectionSnapshot(true);
         return;
     }
-    if (ck::Is_NOT_Valid(_FocusedEntity))
+    if (ck::Is_NOT_Valid(_FocusedEntity) ||
+        !UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(_FocusedEntity))
     { Refresh_SelectionSnapshot(true); }
+    if (ck::Is_NOT_Valid(_FocusedEntity) ||
+        !UCk_DebugOverlay_SourceAdmission_UE::IsAdmitted(_FocusedEntity))
+    { return; }
     _SelectionLockedEntity = _FocusedEntity;
     _FocusLocked = ck::IsValid(_SelectionLockedEntity);
 }
