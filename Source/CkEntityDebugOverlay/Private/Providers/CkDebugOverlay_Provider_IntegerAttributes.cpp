@@ -7,6 +7,7 @@
 // Attribute utils — mirroring CkInspector_IntegerAttributes.cpp includes
 #include "CkAttribute/IntegerAttribute/CkIntegerAttribute_Utils.h"
 #include "CkLabel/CkLabel_Utils.h"
+#include "CkEntityDebugOverlay/Provider/CkDebugOverlay_ObservationBank.h"
 
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
@@ -53,7 +54,10 @@ auto FCk_DebugOverlay_Provider_IntegerAttributes::Get_FieldTags() const -> TArra
 auto FCk_DebugOverlay_Provider_IntegerAttributes::CanProvide(const FCk_Handle& Entity) const -> bool
 {
     if (ck::Is_NOT_Valid(Entity)) { return false; }
-    return UCk_Utils_IntegerAttribute_UE::Has_Any(Entity);
+    if (UCk_Utils_IntegerAttribute_UE::Has_Any(Entity)) { return true; }
+    auto Observation = FCk_DebugOverlay_SourceObservation{};
+    return FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(Entity, Observation) &&
+        NOT Observation.Integers.IsEmpty();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -83,44 +87,63 @@ auto FCk_DebugOverlay_Provider_IntegerAttributes::Collect(
     if (NOT Cfg.EnabledFields.HasTagExact(FieldTag_Value()))
     { return; }
 
-    auto MutableEntity = Entity;
-    UCk_Utils_IntegerAttribute_UE::ForEach(MutableEntity,
-        [&Out, &Cfg](FCk_Handle_IntegerAttribute InAttribute)
-        {
-            const auto AttributeTag  = UCk_Utils_GameplayLabel_UE::Get_Label(InAttribute);
-            const auto AttributeName = AttributeTag.IsValid()
-                ? AttributeTag.GetTagName().ToString()
-                : FString(TEXT("Unnamed"));
+    if (ck::Is_NOT_Valid(Entity)) { return; }
+    const auto Passes = [&Cfg](const FGameplayTag& AttributeTag,
+        FString& OutAttributeName) -> bool
+    {
+        OutAttributeName = AttributeTag.IsValid()
+            ? AttributeTag.GetTagName().ToString()
+            : FString(TEXT("Unnamed"));
+        if (NOT UCk_DebugOverlay_Settings::Get_PassesAttributeFilter(OutAttributeName))
+        { return false; }
+        if (NOT Cfg.EntryFilter.IsEmpty() &&
+            (NOT AttributeTag.IsValid() ||
+                NOT Cfg.EntryFilter.Matches(FGameplayTagContainer(AttributeTag))))
+        { return false; }
+        return true;
+    };
 
-            // Apply EntryFilter: if a query is set, skip attributes whose label tag doesn't match.
-            // User allow/deny filter (settings; editable live from the ECS Debugger popover).
-            if (NOT UCk_DebugOverlay_Settings::Get_PassesAttributeFilter(AttributeName))
-            { return; }
+    const auto EmitValue = [&Out](const FString& AttributeName,
+        int32 BaseVal, int32 FinalVal)
+    {
+        auto DisplayStr = AttributeName + TEXT(": ") + ck::Format_UE(TEXT("{}"), FinalVal);
+        if (BaseVal != FinalVal)
+        { DisplayStr += ck::Format_UE(TEXT(" (base {})"), BaseVal); }
 
-            if (NOT Cfg.EntryFilter.IsEmpty())
+        FCk_DebugOverlay_Row Row;
+        Row.FieldTag = FieldTag_Value();
+        Row.Value = FText::FromString(DisplayStr);
+        Row.Severity = ECk_DebugOverlay_Severity::Normal;
+        Out.Rows.Add(MoveTemp(Row));
+    };
+
+    if (UCk_Utils_IntegerAttribute_UE::Has_Any(Entity))
+    {
+        auto MutableEntity = Entity;
+        UCk_Utils_IntegerAttribute_UE::ForEach(MutableEntity,
+            [&Passes, &EmitValue](FCk_Handle_IntegerAttribute InAttribute)
             {
-                if (NOT AttributeTag.IsValid() || NOT Cfg.EntryFilter.Matches(FGameplayTagContainer(AttributeTag)))
-                { return; }
-            }
+                const auto AttributeTag = UCk_Utils_GameplayLabel_UE::Get_Label(InAttribute);
+                auto AttributeName = FString{};
+                if (NOT Passes(AttributeTag, AttributeName)) { return; }
+                const auto FinalVal = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(
+                    InAttribute, ECk_MinMaxCurrent::Current);
+                const auto BaseVal = UCk_Utils_IntegerAttribute_UE::Get_BaseValue(
+                    InAttribute, ECk_MinMaxCurrent::Current);
+                EmitValue(AttributeName, BaseVal, FinalVal);
+            });
+        return;
+    }
 
-            const auto FinalVal = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(
-                InAttribute, ECk_MinMaxCurrent::Current);
-            const auto BaseVal  = UCk_Utils_IntegerAttribute_UE::Get_BaseValue(
-                InAttribute, ECk_MinMaxCurrent::Current);
-
-            auto DisplayStr = AttributeName + TEXT(": ") + ck::Format_UE(TEXT("{}"), FinalVal);
-
-            if (BaseVal != FinalVal)
-            {
-                DisplayStr += ck::Format_UE(TEXT(" (base {})"), BaseVal);
-            }
-
-            FCk_DebugOverlay_Row Row;
-            Row.FieldTag = FieldTag_Value();
-            Row.Value    = FText::FromString(DisplayStr);
-            Row.Severity = ECk_DebugOverlay_Severity::Normal;
-            Out.Rows.Add(MoveTemp(Row));
-        });
+    auto Observation = FCk_DebugOverlay_SourceObservation{};
+    if (NOT FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(Entity, Observation))
+    { return; }
+    for (const auto& Fact : Observation.Integers)
+    {
+        auto AttributeName = FString{};
+        if (Passes(Fact.Label, AttributeName))
+        { EmitValue(AttributeName, Fact.Base, Fact.Final); }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -134,10 +157,20 @@ auto FCk_DebugOverlay_Provider_IntegerAttributes::Get_CompactToken(
     if (ck::Is_NOT_Valid(Entity)) { return {}; }
 
     // Show count of integer attributes in compact mode.
-    auto MutableEntity = Entity;
     int32 Count = 0;
-    UCk_Utils_IntegerAttribute_UE::ForEach(MutableEntity,
-        [&Count](FCk_Handle_IntegerAttribute) { ++Count; });
+    if (UCk_Utils_IntegerAttribute_UE::Has_Any(Entity))
+    {
+        auto MutableEntity = Entity;
+        UCk_Utils_IntegerAttribute_UE::ForEach(MutableEntity,
+            [&Count](FCk_Handle_IntegerAttribute) { ++Count; });
+    }
+    else
+    {
+        auto Observation = FCk_DebugOverlay_SourceObservation{};
+        if (NOT FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(Entity, Observation))
+        { return {}; }
+        Count = Observation.Integers.Num();
+    }
 
     if (Count == 0) { return {}; }
     return FString::Printf(TEXT("I:%dattr"), Count);

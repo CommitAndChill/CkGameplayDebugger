@@ -10,6 +10,7 @@
 #include "CkStateMachine/StateMachine/CkStateMachine_Utils.h"
 #include "CkStateMachine/Task/CkSmTask_Fragment.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
+#include "CkEntityDebugOverlay/Provider/CkDebugOverlay_ObservationBank.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 
@@ -176,7 +177,10 @@ auto FCk_DebugOverlay_Provider_StateMachine::Get_FieldTags() const -> TArray<FCk
 auto FCk_DebugOverlay_Provider_StateMachine::CanProvide(const FCk_Handle& Entity) const -> bool
 {
     if (ck::Is_NOT_Valid(Entity)) { return false; }
-    return Entity.Has<ck::FFragment_Sm>();
+    if (Entity.Has<ck::FFragment_Sm>()) { return true; }
+    auto Observation = FCk_DebugOverlay_SourceObservation{};
+    return FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(Entity, Observation) &&
+        Observation.HasSm && NOT Observation.SmStates.IsEmpty();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -198,7 +202,66 @@ auto FCk_DebugOverlay_Provider_StateMachine::Collect(
     Out.ProviderTag  = Get_ProviderTag();
     Out.SortPriority = Get_SortPriority();
 
-    if (NOT Entity.Has<ck::FFragment_Sm>()) { return; }
+    if (ck::Is_NOT_Valid(Entity)) { return; }
+    if (NOT Entity.Has<ck::FFragment_Sm>())
+    {
+        auto Observation = FCk_DebugOverlay_SourceObservation{};
+        if (NOT FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(Entity, Observation) ||
+            NOT Observation.HasSm || Observation.SmStates.IsEmpty())
+        { return; }
+
+        if (Cfg.EnabledFields.HasTagExact(FieldTag_State()))
+        {
+            const int32 MaxDepth = GetDefault<UCk_DebugOverlay_Settings>()->SmMaxRecursionDepth;
+            for (const auto& Fact : Observation.SmStates)
+            {
+                // A valid depth-first chain cannot be deeper than its row count.
+                if (Fact.Depth > 0 &&
+                    (Fact.Depth > MaxDepth || Fact.Depth >= Observation.SmStates.Num()))
+                { continue; }
+                auto Sev = ECk_DebugOverlay_Severity::Normal;
+                switch (Fact.Status)
+                {
+                    case ECk_SmRunStatus::Running: Sev = ECk_DebugOverlay_Severity::Good; break;
+                    case ECk_SmRunStatus::Paused:  Sev = ECk_DebugOverlay_Severity::Warn; break;
+                    case ECk_SmRunStatus::Stopped:
+                    default:                       Sev = ECk_DebugOverlay_Severity::Normal; break;
+                }
+                auto Prefix = FString{};
+                for (auto Lvl = 0; Lvl < Fact.Depth; ++Lvl) { Prefix += TEXT("> "); }
+                const auto StateName = Fact.StateName.IsEmpty()
+                    ? FString(TEXT("(None)")) : Format_Sm_StateName(Fact.StateName);
+                FCk_DebugOverlay_Row Row;
+                Row.FieldTag = FieldTag_State();
+                Row.Value = FText::FromString(Prefix + StateName);
+                Row.Severity = Sev;
+                Out.Rows.Add(MoveTemp(Row));
+            }
+        }
+
+        if (Cfg.EnabledFields.HasTagExact(FieldTag_History()) && Observation.HasDebugHistory)
+        {
+            const auto& History = Observation.SmHistory;
+            FCk_DebugOverlay_Row Row;
+            Row.FieldTag = FieldTag_History();
+            Row.Value = FText::FromString(FString::Printf(TEXT("(%d entries)"), History.Num()));
+            Row.Severity = ECk_DebugOverlay_Severity::Normal;
+            constexpr auto MaxEntriesToShow = int32{ 8 };
+            const auto StartIdx = FMath::Max(0, History.Num() - MaxEntriesToShow);
+            for (auto I = StartIdx; I < History.Num(); ++I)
+            {
+                const auto& Entry = History[I];
+                const auto From = Entry.FromStateName.IsEmpty()
+                    ? FString(TEXT("(None)")) : Format_Sm_StateName(Entry.FromStateName);
+                const auto To = Entry.ToStateName.IsEmpty()
+                    ? FString(TEXT("(None)")) : Format_Sm_StateName(Entry.ToStateName);
+                Row.ExplicitHistory.Add(FText::FromString(
+                    FString::Printf(TEXT("%s → %s"), *From, *To)));
+            }
+            Out.Rows.Add(MoveTemp(Row));
+        }
+        return;
+    }
 
     // --- State (recursive: top-level + every active sub-state-machine) ---
     if (Cfg.EnabledFields.HasTagExact(FieldTag_State()))
@@ -319,7 +382,18 @@ auto FCk_DebugOverlay_Provider_StateMachine::Get_CompactToken(
     const FCk_Handle&                      Entity,
     const FCk_DebugOverlay_ProviderConfig& /*Cfg*/) const -> FString
 {
-    if (ck::Is_NOT_Valid(Entity) || NOT Entity.Has<ck::FFragment_Sm>()) { return {}; }
+    if (ck::Is_NOT_Valid(Entity)) { return {}; }
+    if (NOT Entity.Has<ck::FFragment_Sm>())
+    {
+        auto Observation = FCk_DebugOverlay_SourceObservation{};
+        if (NOT FCk_DebugOverlay_ObservationBankUtils::TryGetPublishedSource(Entity, Observation) ||
+            NOT Observation.HasSm || Observation.SmStates.IsEmpty())
+        { return {}; }
+        const auto& RawName = Observation.SmStates[0].StateName;
+        const auto StateName = RawName.IsEmpty()
+            ? FString(TEXT("(None)")) : Format_Sm_StateName(RawName);
+        return FString::Printf(TEXT("SM:%s"), *StateName);
+    }
     const UClass* StateClass = Entity.Get<ck::FFragment_Sm>().Get_CurrentStateClass();
     const FString StateName  = Format_Sm_ClassName(StateClass);
     return FString::Printf(TEXT("SM:%s"), *StateName);
