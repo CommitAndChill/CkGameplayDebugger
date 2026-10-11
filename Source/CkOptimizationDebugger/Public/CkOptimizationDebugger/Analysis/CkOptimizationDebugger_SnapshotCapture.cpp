@@ -1,4 +1,5 @@
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_SnapshotCapture.h"
+#include "TextureResource.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"

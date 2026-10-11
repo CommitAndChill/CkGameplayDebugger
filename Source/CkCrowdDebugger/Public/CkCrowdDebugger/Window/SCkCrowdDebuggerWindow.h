@@ -1,4 +1,6 @@
 #pragma once
+#include "CkEcs/Handle/CkHandle.h"
+
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"

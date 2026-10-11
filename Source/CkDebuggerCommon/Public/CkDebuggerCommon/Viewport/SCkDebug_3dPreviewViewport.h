@@ -5,6 +5,7 @@
 #include "Camera/CameraTypes.h"
 #include "CoreMinimal.h"
 #include "InputCoreTypes.h"
+#include "Engine/EngineBaseTypes.h"
 #include "Widgets/SViewport.h"
 
 class FPreviewScene;

@@ -1,5 +1,7 @@
 #include "CkSaveDebugger/Window/SCkSaveDebuggerWindow.h"
 
+#include "Framework/Application/SlateUser.h"
+
 #include "CkCore/EditorOnly/CkEditorOnly_Utils.h"
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"

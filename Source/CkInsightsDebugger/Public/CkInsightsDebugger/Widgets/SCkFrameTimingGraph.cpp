@@ -1,5 +1,7 @@
 #include "CkInsightsDebugger/Widgets/SCkFrameTimingGraph.h"
 
+#include "Fonts/FontMeasure.h"
+
 #include "CkInsightsAnalyzer/Core/CkTimerCategorizer.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 

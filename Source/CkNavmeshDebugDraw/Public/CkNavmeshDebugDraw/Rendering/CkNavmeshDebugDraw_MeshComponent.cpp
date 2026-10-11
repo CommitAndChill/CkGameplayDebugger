@@ -1,5 +1,10 @@
 #include "CkNavmeshDebugDraw/Rendering/CkNavmeshDebugDraw_MeshComponent.h"
 
+#if WITH_CK_NAVMESH_DEBUG_DRAW
+#include "CkCore/Format/CkFormat.h"
+#include "MaterialDomain.h"
+#endif
+
 auto UCk_NavmeshDebugDraw_MeshComponent_UE::Get_TriangleCount() const -> int32
 {
     auto TriangleCount = 0;

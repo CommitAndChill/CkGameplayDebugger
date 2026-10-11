@@ -1,4 +1,6 @@
 #pragma once
+#include "Widgets/Text/STextBlock.h"
+
 
 #include "CkAStarDebugger/Data/CkAStarDebugger_Types.h"
 

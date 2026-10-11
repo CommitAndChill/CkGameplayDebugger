@@ -1,4 +1,6 @@
 #pragma once
+#include "Widgets/Layout/SBox.h"
+
 
 #include "Widgets/SCompoundWidget.h"
 #include "Containers/Array.h"

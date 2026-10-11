@@ -1,5 +1,7 @@
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_SelectionSettings.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include "Dom/JsonObject.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonReader.h"

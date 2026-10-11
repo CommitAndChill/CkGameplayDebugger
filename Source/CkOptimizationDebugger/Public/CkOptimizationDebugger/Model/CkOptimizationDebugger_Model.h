@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include "CkCore/Format/CkFormat.h"
+
 
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Snapshot.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Suppression.h"

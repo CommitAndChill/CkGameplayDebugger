@@ -1,6 +1,8 @@
 #include "CkDebuggerCommon_Module.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Ensure/CkEnsure.h"
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Gallery/SCkDebuggerGallery_Window.h"

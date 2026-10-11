@@ -17,6 +17,7 @@
 #include "CkDebuggerCommon/Classification/CkDebug_DepthTransparency.h"
 
 #include "CanvasItem.h"
+#include "TextureResource.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Texture2D.h"

@@ -1,6 +1,10 @@
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_Root.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "CkCore/Macros/CkMacros.h"
+#endif
+
+#if WITH_DEV_AUTOMATION_TESTS
 
 #include "CkSlateLayout/SCkUiSurface.h"
 

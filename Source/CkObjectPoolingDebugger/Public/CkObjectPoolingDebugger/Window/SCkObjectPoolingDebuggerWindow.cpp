@@ -1,5 +1,7 @@
 #include "CkObjectPoolingDebugger/Window/SCkObjectPoolingDebuggerWindow.h"
 
+#include "CkCore/Ensure/CkEnsure.h"
+
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/Format/CkFormat.h"

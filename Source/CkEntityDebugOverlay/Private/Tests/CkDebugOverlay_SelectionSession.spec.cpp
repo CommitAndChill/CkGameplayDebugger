@@ -1,5 +1,7 @@
 #include "Misc/AutomationTest.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include <limits>
 
 #include "CkEntityDebugOverlay/Selection/CkDebugOverlay_SelectionSession.h"

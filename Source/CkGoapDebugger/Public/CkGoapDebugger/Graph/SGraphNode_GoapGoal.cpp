@@ -2,6 +2,10 @@
 
 #include "SGraphNode_GoapGoal.h"
 
+#if WITH_EDITOR
+#include "SlateOptMacros.h"
+#endif
+
 #include "CkGoapDebugNode_Goal.h"
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 

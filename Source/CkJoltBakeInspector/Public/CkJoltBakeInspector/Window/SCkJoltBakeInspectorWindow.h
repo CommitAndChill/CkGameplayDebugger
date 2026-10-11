@@ -1,4 +1,6 @@
 #pragma once
+#include "Widgets/Views/STableViewBase.h"
+
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 #include "CkJoltEditor/Cook/CkJoltCook_MeshShapeAudit.h"

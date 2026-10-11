@@ -5,6 +5,7 @@
 #include "CkEcs/Handle/CkHandle.h"
 
 #include "UObject/StrongObjectPtr.h"
+#include <Engine/Texture2D.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 

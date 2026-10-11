@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkSmDebugger/Data/CkSmDebugger_Types.h"
+#include "Widgets/Text/STextBlock.h"
 
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"

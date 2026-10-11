@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/EngineBaseTypes.h"
 #include "CkCore/Macros/CkMacros.h"
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -1,4 +1,7 @@
 #include "CkAudioDebugger/Window/SCkAudioDebuggerWindow.h"
+#include "Widgets/Layout/SScrollBox.h"
+
+#include "Widgets/Layout/SWidgetSwitcher.h"
 #include "CkAudioDebugger/Window/SCkAudioDebugger_FalloffCurve.h"
 #include "CkAudioDebugger/Window/SCkAudioDebugger_Radar.h"
 #include "../../CkAudioDebugger_Module.h"

@@ -10,6 +10,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 #include "SceneView.h"
 #include "Slate/SceneViewport.h"
 #include "UnrealClient.h"

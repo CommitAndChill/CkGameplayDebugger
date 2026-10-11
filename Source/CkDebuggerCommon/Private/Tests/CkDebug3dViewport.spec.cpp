@@ -1,5 +1,6 @@
 #include "CkDebuggerCommon/Viewport/SCkDebug_3dPreviewViewport.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerWindowSettings.h"
+#include "CkCore/Macros/CkMacros.h"
 
 #include "Misc/AutomationTest.h"
 #include "Widgets/Text/STextBlock.h"

@@ -1,5 +1,7 @@
 #include "CkEntityDebugOverlay/Selection/CkDebugOverlay_SelectionSession.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_SelectionSettings.h"
 
 #include "Algo/Sort.h"

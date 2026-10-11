@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
+#include "Engine/Texture2D.h"
 
 #include "CkSaveDebugger/Model/CkSaveDebugger_Model.h"
 

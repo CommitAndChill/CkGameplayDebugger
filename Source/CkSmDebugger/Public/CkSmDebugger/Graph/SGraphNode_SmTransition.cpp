@@ -1,4 +1,5 @@
 #if WITH_EDITOR
+#include "SlateOptMacros.h"
 #include "SGraphNode_SmTransition.h"
 
 #include "CkSmDebugNode_Transition.h"

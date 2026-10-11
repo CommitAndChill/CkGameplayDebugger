@@ -2,6 +2,10 @@
 
 #include "SGraphNode_GoapAction.h"
 
+#if WITH_EDITOR
+#include "SlateOptMacros.h"
+#endif
+
 #include "CkGoapDebugNode_Action.h"
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DecisionModel.h"

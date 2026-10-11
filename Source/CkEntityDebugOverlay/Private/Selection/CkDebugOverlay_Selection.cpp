@@ -1,4 +1,6 @@
 #include "CkEntityDebugOverlay/Selection/CkDebugOverlay_Selection.h"
+
+#include "CkCore/Macros/CkMacros.h"
 #include "Math/UnrealMathUtility.h"
 
 namespace ck_debugoverlay

@@ -1,4 +1,6 @@
 #pragma once
+#include "CkCore/Macros/CkMacros.h"
+
 
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"

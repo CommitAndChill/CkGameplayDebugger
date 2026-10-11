@@ -1,4 +1,6 @@
 #pragma once
+#include "Widgets/Text/STextBlock.h"
+
 
 #include "Widgets/SCompoundWidget.h"
 #include "Math/Vector2D.h"

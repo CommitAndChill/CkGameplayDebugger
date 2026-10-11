@@ -1,6 +1,7 @@
 #include "SGraphNode_EcsEntity.h"
 
 #if WITH_EDITOR
+#include "SlateOptMacros.h"
 
 #include "CkEcsDebugNode_Entity.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"

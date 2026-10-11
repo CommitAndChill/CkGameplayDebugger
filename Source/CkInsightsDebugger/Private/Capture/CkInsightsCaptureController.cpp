@@ -1,5 +1,10 @@
 #include "CkInsightsDebugger/Capture/CkInsightsCaptureController.h"
 
+#include "CkCore/Ensure/CkEnsure.h"
+#if WITH_EDITOR
+#include "LevelEditorViewport.h"
+#endif
+
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 

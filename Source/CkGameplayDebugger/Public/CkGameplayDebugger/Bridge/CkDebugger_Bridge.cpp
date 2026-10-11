@@ -1,6 +1,9 @@
 #include "CkDebugger_Bridge.h"
 
+#include "Engine/GameViewportClient.h"
+
 #if WITH_GAMEPLAY_DEBUGGER
+#include "GlobalRenderResources.h"
 #include "GameplayDebuggerConfig.h"
 #endif
 
