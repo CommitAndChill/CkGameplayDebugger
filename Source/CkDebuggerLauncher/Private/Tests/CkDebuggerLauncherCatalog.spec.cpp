@@ -30,6 +30,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(const FString& Parameters)
 {
     auto ExpectedTabIds = TSet<FName>{
+        TEXT("CkPixelArtViewer"),
         TEXT("CkEcsDebugger"),
         TEXT("CkSmDebugger"),
         TEXT("CkUIDebugger"),
@@ -164,7 +165,7 @@ bool FCkDebuggerLauncherCatalog_AllCatalogTabsCloseAndReopen::RunTest(const FStr
         FSlateApplication::Get().PumpMessages();
         FSlateApplication::Get().Tick();
     };
-    TestEqual(TEXT("Lifecycle census covers every registered standalone debugger tab"), Tools.Num(), PLATFORM_WINDOWS ? 26 : 25);
+    TestEqual(TEXT("Lifecycle census covers every registered standalone debugger tab"), Tools.Num(), PLATFORM_WINDOWS ? 27 : 26);
     for (const auto& Tool : Tools)
     {
         const auto TabId = Tool.Get_TabId();
@@ -376,6 +377,28 @@ bool FCkDebuggerLauncherPackaging_DevToolDescriptorsIncludeDevelopmentCookedWin6
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInsightsDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkHangMonitor"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkDebuggerLauncher"));
+
+    auto PixelViewer = TOptional<FModuleDescriptor>{};
+    const auto DebuggerPlugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (DebuggerPlugin.IsValid())
+    {
+        for (const auto& Module : DebuggerPlugin->GetDescriptor().Modules)
+        {
+            if (Module.Name == FName{TEXT("CkPixelArtViewer")})
+            { PixelViewer = Module; break; }
+        }
+    }
+    TestTrue(TEXT("Pixel art viewer module descriptor is present"), PixelViewer.IsSet());
+    if (PixelViewer.IsSet())
+    {
+        TestEqual(TEXT("Pixel art authoring viewer is editor only"), PixelViewer->Type, EHostType::Editor);
+        TestTrue(TEXT("Pixel art viewer is available in the Development Editor"),
+            PixelViewer->IsCompiledInConfiguration(TEXT("Win64"), EBuildConfiguration::Development,
+                TEXT("CkPlugins"), EBuildTargetType::Editor, true, false));
+        TestFalse(TEXT("Pixel art viewer is excluded from cooked Development games"),
+            PixelViewer->IsCompiledInConfiguration(TEXT("Win64"), EBuildConfiguration::Development,
+                TEXT("CkPlugins"), EBuildTargetType::Game, true, true));
+    }
 
     const auto* HangMonitor = TestModule(TEXT("CkDebugger"), TEXT("CkHangMonitor"));
     if (ck::IsValid(HangMonitor, ck::IsValid_Policy_NullptrOnly{}))
