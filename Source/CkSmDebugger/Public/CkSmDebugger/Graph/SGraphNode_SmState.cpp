@@ -1,6 +1,6 @@
 #if WITH_EDITOR
-#include "SlateOptMacros.h"
 #include "SGraphNode_SmState.h"
+#include "SlateOptMacros.h"
 
 #include "CkSmDebugNode_State.h"
 #include "CkSmDebugGraph.h"
