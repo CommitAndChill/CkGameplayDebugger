@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "CkPixelSprite/CkPixelSprite_Render.h"
@@ -118,6 +118,35 @@ struct CKPIXELARTVIEWER_API FCk_PixelArtViewer_State
             const FCk_PixelSprite_Animation& InAnimation
         ) const
         -> double;
+    /** Cursor on the authored forward-duration axis; a manual frame is pinned to its prefix. */
+    /** Validates authored holds and returns their forward sum, regardless of playback mode. */
+    auto
+        TryGet_TimelineDurationMilliseconds(
+            const FCk_PixelSprite_Animation& InAnimation,
+            double& OutMilliseconds
+        ) const
+        -> bool;
+    /** Uses sampled presentation time; source decimation never changes this position. */
+    auto
+        TryGet_TimelineMilliseconds(
+            const FCk_PixelSprite_Animation& InAnimation,
+            double& OutMilliseconds
+        ) const
+        -> bool;
+    /** The return visit exists only for interior frames in PingPong playback. */
+    auto
+        TryGet_TimelineReturning(
+            const FCk_PixelSprite_Animation& InAnimation,
+            bool& OutReturning
+        ) const
+        -> bool;
+    /** Keeps the current absolute cycle and return leg for interior frames. End frames use forward. */
+    auto
+        Seek_TimelineMilliseconds(
+            const FCk_PixelSprite_Animation& InAnimation,
+            double InMilliseconds
+        )
+        -> bool;
     auto
         Step_Frame(
             const FCk_PixelSprite_Animation& InAnimation,

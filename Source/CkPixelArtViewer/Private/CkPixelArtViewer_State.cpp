@@ -1,8 +1,105 @@
-#include "CkPixelArtViewer/CkPixelArtViewer_State.h"
+﻿#include "CkPixelArtViewer/CkPixelArtViewer_State.h"
 
 #include "CkCore/Macros/CkMacros.h"
 
 #include <cmath>
+
+namespace ck_pixel_art_viewer_state
+{
+    struct FTimelineDurations
+    {
+        double Forward = 0.0;
+        double Cycle = 0.0;
+    };
+
+    auto
+        TryGet_Durations(
+            const FCk_PixelSprite_Animation& InAnimation,
+            ECk_PixelSprite_Playback InPlayback,
+            FTimelineDurations& OutDurations
+        )
+        -> bool
+    {
+        const auto Count = InAnimation._Frames.Num();
+        if (Count == 0 || Count > 4096 ||
+            (InPlayback != ECk_PixelSprite_Playback::Loop &&
+             InPlayback != ECk_PixelSprite_Playback::Once &&
+             InPlayback != ECk_PixelSprite_Playback::PingPong))
+        {
+            return false;
+        }
+
+        auto Durations = FTimelineDurations{};
+        for (const auto& Frame : InAnimation._Frames)
+        {
+            if (NOT std::isfinite(Frame._DurationMilliseconds) || Frame._DurationMilliseconds <= 0.0)
+            {
+                return false;
+            }
+            Durations.Forward += Frame._DurationMilliseconds;
+            if (NOT std::isfinite(Durations.Forward))
+            {
+                return false;
+            }
+        }
+        Durations.Cycle = Durations.Forward;
+        if (InPlayback == ECk_PixelSprite_Playback::PingPong)
+        {
+            for (auto Index = Count - 2; Index > 0; --Index)
+            {
+                Durations.Cycle += InAnimation._Frames[Index]._DurationMilliseconds;
+                if (NOT std::isfinite(Durations.Cycle))
+                {
+                    return false;
+                }
+            }
+        }
+        OutDurations = Durations;
+        return true;
+    }
+
+    auto
+        TryGet_Phase(
+            double InAbsoluteMilliseconds,
+            int32 InSamplingFps,
+            ECk_PixelSprite_Playback InPlayback,
+            double InCycleMilliseconds,
+            double& OutPhase
+        )
+        -> bool
+    {
+        if (NOT std::isfinite(InAbsoluteMilliseconds))
+        {
+            return false;
+        }
+        auto Time = InAbsoluteMilliseconds;
+        if (InSamplingFps > 0)
+        {
+            const auto Interval = 1000.0 / InSamplingFps;
+            Time = std::floor(Time / Interval) * Interval;
+            if (NOT std::isfinite(Time))
+            {
+                return false;
+            }
+        }
+        if (InPlayback == ECk_PixelSprite_Playback::Once)
+        {
+            OutPhase = FMath::Clamp(Time, 0.0, InCycleMilliseconds);
+            return true;
+        }
+        auto Phase = std::fmod(Time, InCycleMilliseconds);
+        if (Phase < 0.0)
+        {
+            Phase += InCycleMilliseconds;
+        }
+        if (Phase >= InCycleMilliseconds)
+        {
+            Phase = std::nextafter(InCycleMilliseconds, 0.0);
+        }
+        OutPhase = Phase;
+        return true;
+    }
+}
 
 auto
     FCk_PixelArtViewer_State::
@@ -213,6 +310,176 @@ auto
         }
     }
     return Duration;
+}
+
+auto
+    FCk_PixelArtViewer_State::
+    TryGet_TimelineDurationMilliseconds(
+        const FCk_PixelSprite_Animation& InAnimation,
+        double& OutMilliseconds
+    ) const
+    -> bool
+{
+    auto Durations = ck_pixel_art_viewer_state::FTimelineDurations{};
+    if (NOT ck_pixel_art_viewer_state::TryGet_Durations(InAnimation, _Playback, Durations))
+    {
+        return false;
+    }
+    OutMilliseconds = Durations.Forward;
+    return true;
+}
+
+auto
+    FCk_PixelArtViewer_State::
+    TryGet_TimelineMilliseconds(
+        const FCk_PixelSprite_Animation& InAnimation,
+        double& OutMilliseconds
+    ) const
+    -> bool
+{
+    auto Durations = ck_pixel_art_viewer_state::FTimelineDurations{};
+    if (NOT ck_pixel_art_viewer_state::TryGet_Durations(InAnimation, _Playback, Durations) ||
+        NOT std::isfinite(_TimeMilliseconds))
+    {
+        return false;
+    }
+    if (_ManualFrame != INDEX_NONE)
+    {
+        if (NOT InAnimation._Frames.IsValidIndex(_ManualFrame))
+        {
+            return false;
+        }
+        auto Prefix = 0.0;
+        for (auto Index = 0; Index < _ManualFrame; ++Index)
+        {
+            Prefix += InAnimation._Frames[Index]._DurationMilliseconds;
+        }
+        OutMilliseconds = Prefix;
+        return true;
+    }
+
+    auto Phase = 0.0;
+    if (NOT ck_pixel_art_viewer_state::TryGet_Phase(
+        _TimeMilliseconds, _SamplingFps, _Playback, Durations.Cycle, Phase))
+    {
+        return false;
+    }
+    if (_Playback != ECk_PixelSprite_Playback::PingPong || Phase < Durations.Forward)
+    {
+        OutMilliseconds = Phase;
+        return true;
+    }
+
+    auto ReturnStart = Durations.Forward;
+    auto SourceEnd = Durations.Forward - InAnimation._Frames.Last()._DurationMilliseconds;
+    for (auto Index = InAnimation._Frames.Num() - 2; Index > 0; --Index)
+    {
+        const auto FrameDuration = InAnimation._Frames[Index]._DurationMilliseconds;
+        if (Phase < ReturnStart + FrameDuration)
+        {
+            OutMilliseconds = SourceEnd - (Phase - ReturnStart);
+            return true;
+        }
+        ReturnStart += FrameDuration;
+        SourceEnd -= FrameDuration;
+    }
+    return false;
+}
+
+auto
+    FCk_PixelArtViewer_State::
+    TryGet_TimelineReturning(
+        const FCk_PixelSprite_Animation& InAnimation,
+        bool& OutReturning
+    ) const
+    -> bool
+{
+    auto Durations = ck_pixel_art_viewer_state::FTimelineDurations{};
+    if (NOT ck_pixel_art_viewer_state::TryGet_Durations(InAnimation, _Playback, Durations) ||
+        NOT std::isfinite(_TimeMilliseconds))
+    {
+        return false;
+    }
+    if (_ManualFrame != INDEX_NONE)
+    {
+        if (NOT InAnimation._Frames.IsValidIndex(_ManualFrame))
+        {
+            return false;
+        }
+        OutReturning = false;
+        return true;
+    }
+    auto Phase = 0.0;
+    if (NOT ck_pixel_art_viewer_state::TryGet_Phase(
+        _TimeMilliseconds, _SamplingFps, _Playback, Durations.Cycle, Phase))
+    {
+        return false;
+    }
+    OutReturning = _Playback == ECk_PixelSprite_Playback::PingPong &&
+        Phase >= Durations.Forward;
+    return true;
+}
+
+auto
+    FCk_PixelArtViewer_State::
+    Seek_TimelineMilliseconds(
+        const FCk_PixelSprite_Animation& InAnimation,
+        double InMilliseconds
+    )
+    -> bool
+{
+    auto Durations = ck_pixel_art_viewer_state::FTimelineDurations{};
+    if (NOT ck_pixel_art_viewer_state::TryGet_Durations(InAnimation, _Playback, Durations) ||
+        NOT std::isfinite(InMilliseconds) || InMilliseconds < 0.0 ||
+        InMilliseconds > Durations.Forward)
+    {
+        return false;
+    }
+    auto CurrentPhase = 0.0;
+    if (NOT ck_pixel_art_viewer_state::TryGet_Phase(
+        _TimeMilliseconds, 0, _Playback, Durations.Cycle, CurrentPhase))
+    {
+        return false;
+    }
+
+    auto TargetPhase = InMilliseconds;
+    if (_Playback != ECk_PixelSprite_Playback::Once && TargetPhase == Durations.Forward)
+    {
+        TargetPhase = std::nextafter(Durations.Forward, 0.0);
+    }
+    if (_Playback == ECk_PixelSprite_Playback::PingPong &&
+        CurrentPhase >= Durations.Forward && InMilliseconds < Durations.Forward)
+    {
+        auto Prefix = 0.0;
+        for (auto Index = 0; Index < InAnimation._Frames.Num(); ++Index)
+        {
+            const auto End = Prefix + InAnimation._Frames[Index]._DurationMilliseconds;
+            if (InMilliseconds < End)
+            {
+                if (Index > 0 && Index < InAnimation._Frames.Num() - 1 &&
+                    InMilliseconds > Prefix)
+                {
+                    auto ReturnStart = Durations.Forward;
+                    for (auto ReturnIndex = InAnimation._Frames.Num() - 2;
+                        ReturnIndex > Index; --ReturnIndex)
+                    {
+                        ReturnStart += InAnimation._Frames[ReturnIndex]._DurationMilliseconds;
+                    }
+                    TargetPhase = ReturnStart + (End - InMilliseconds);
+                }
+                break;
+            }
+            Prefix = End;
+        }
+    }
+    const auto CycleBase = _Playback == ECk_PixelSprite_Playback::Once
+        ? 0.0 : _TimeMilliseconds - CurrentPhase;
+    const auto Absolute = CycleBase + TargetPhase;
+    if (NOT std::isfinite(Absolute))
+    {
+        return false;
+    }
+    return Seek(Absolute);
 }
 
 auto
