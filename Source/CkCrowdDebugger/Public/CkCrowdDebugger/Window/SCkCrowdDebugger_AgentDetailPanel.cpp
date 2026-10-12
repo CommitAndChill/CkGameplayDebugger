@@ -70,6 +70,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
 						SNew(SCkDebug_EntityRef)
+						.Visibility_Lambda([this]() { return _Snapshot.IsRemote ? EVisibility::Collapsed : EVisibility::Visible; })
 						.ShowName(true)
 						.Entity_Lambda([this]() -> FCk_Handle
 						{
@@ -107,6 +108,9 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 					]
 				]
 
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Remote agent"), [this]{ return _Snapshot.IsRemote ? _Snapshot.RemoteDisplayId : FString(TEXT("—")); }, HandleColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Copied owner"), [this]{ return _Snapshot.IsRemote ? _Snapshot.OwnerName : FString(TEXT("—")); }, HandleColor) ]
+
 				// ---- Identity --------------------------------------------------------------------
 				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)
 				[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Identity"))) ]
@@ -118,6 +122,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 					.ValueWidget()
 					[
 						SNew(SCkDebug_EntityRef)
+						.Visibility_Lambda([this]() { return _Snapshot.IsRemote ? EVisibility::Collapsed : EVisibility::Visible; })
 						.ShowName(false)
 						.Entity_Lambda([this]() -> FCk_Handle { return _HasSelection ? _Snapshot.Handle : FCk_Handle{}; })
 					]
@@ -132,6 +137,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 					.ValueWidget()
 					[
 						SNew(SCkDebug_EntityRef)
+						.Visibility_Lambda([this]() { return _Snapshot.IsRemote ? EVisibility::Collapsed : EVisibility::Visible; })
 						.ShowName(true)
 						.Entity_Lambda([this]() -> FCk_Handle
 						{
@@ -244,7 +250,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
 						SNew(SButton)
-						.IsEnabled_Lambda([this]{ return _HasSelection; })
+						.IsEnabled_Lambda([this]{ return _HasSelection && !_Snapshot.IsRemote; })
 						.OnClicked(this, &SCkCrowdDebugger_AgentDetailPanel::Toggle_DebugOverride)
 						.ToolTipText(FText::FromString(TEXT("Take manual control: the NPC AI stops issuing its own MoveTo for this agent. Right-click a destination in the viewport to command it — commanding auto-takes control, so this button mostly matters for releasing back to the AI.")))
 						[
@@ -254,7 +260,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SButton)
-						.IsEnabled_Lambda([this]{ return _HasSelection && ck::DebugFocus::Get_CanFocus(); })
+						.IsEnabled_Lambda([this]{ return _HasSelection && !_Snapshot.IsRemote && ck::DebugFocus::Get_CanFocus(); })
 						.OnClicked_Lambda([this]() -> FReply
 						{
 							if (_HasSelection)
@@ -437,13 +443,13 @@ auto SCkCrowdDebugger_AgentDetailPanel::MakeTunerRow(
 // --------------------------------------------------------------------------------------------------------------------
 
 auto SCkCrowdDebugger_AgentDetailPanel::Get_TunersEnabled() const -> bool
-{ return _HasSelection; }
+{ return _HasSelection && !_Snapshot.IsRemote; }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto SCkCrowdDebugger_AgentDetailPanel::WriteSelectedParams() -> void
 {
-	if (NOT _ViewModel.IsValid())
+	if (NOT _ViewModel.IsValid() || _ViewModel->Get_IsRemote())
 	{ return; }
 
 	auto Handle = _ViewModel->Get_SelectedHandle();
@@ -467,6 +473,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Get_HasDebugOverride() const -> bool
 {
 	if (NOT _ViewModel.IsValid())
 	{ return false; }
+	if (_Snapshot.IsRemote) { return _HasSelection && _Snapshot.RemoteHasDebugOverride; }
 	auto Handle = _ViewModel->Get_SelectedHandle();
 	auto Agent = UCk_Utils_CrowdAgent_UE::Cast(Handle);
 	return ck::IsValid(Agent) && UCk_Utils_CrowdAgent_UE::Get_HasDebugOverride(Agent);
@@ -474,6 +481,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Get_HasDebugOverride() const -> bool
 
 auto SCkCrowdDebugger_AgentDetailPanel::Get_OverrideButtonText() const -> FText
 {
+	if (_Snapshot.IsRemote) { return FText::FromString(TEXT("Remote commands unavailable")); }
 	return Get_HasDebugOverride()
 		? FText::FromString(TEXT("Release to AI"))
 		: FText::FromString(TEXT("Take Control"));
@@ -481,7 +489,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Get_OverrideButtonText() const -> FText
 
 auto SCkCrowdDebugger_AgentDetailPanel::Toggle_DebugOverride() -> FReply
 {
-	if (NOT _ViewModel.IsValid())
+	if (NOT _ViewModel.IsValid() || _ViewModel->Get_IsRemote())
 	{ return FReply::Handled(); }
 	auto Handle = _ViewModel->Get_SelectedHandle();
 	auto Agent = UCk_Utils_CrowdAgent_UE::Cast(Handle);

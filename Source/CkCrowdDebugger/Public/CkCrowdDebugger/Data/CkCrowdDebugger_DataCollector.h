@@ -17,6 +17,9 @@ public:
 	// reports its point count. Pass an invalid handle to carry none.
 	auto Collect(UWorld* InWorld, const FCk_Handle& InSelectedAgent) -> void;
 	auto Reset_ForWorldChange() -> void;
+	static auto TryBuildRemoteAgents(const FCkCrowdRemoteSelectionEnvelope& InEnvelope,
+		TArray<FCkCrowdDebugger_AgentSnapshot>& OutAgents) -> bool;
+	auto InstallRemoteAgents(TArray<FCkCrowdDebugger_AgentSnapshot>&& InAgents) -> void;
 
 	// Run a synthetic FindPathSync probe (origin → origin+200 in world space) and
 	// stash the result on _NavmeshStatus. Called by the ViewModel from the toolbar

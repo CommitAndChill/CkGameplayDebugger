@@ -104,6 +104,7 @@ namespace
 	// the clean-name input is deliberately empty — pass the name here the day that changes.
 	auto AgentEntityIdText(const FCkCrowdDebugger_AgentSnapshot& InSnapshot) -> FString
 	{
+		if (InSnapshot.IsRemote) { return InSnapshot.RemoteDisplayId; }
 		return ck::debug_axes::Make_EntityIdText(
 			UCkDebuggerStyleSettings::Get_Selection(),
 			FString{},
@@ -227,11 +228,13 @@ auto SCkCrowdDebugger_AgentListPanel::ApplyFilterPipeline(
 	// rows from the middle of the list, so positional correspondence between _ItemSource
 	// and InAgents no longer holds once a filter is active.
 	auto Existing = TMap<FCk_Handle, ItemPtr>{};
+	auto RemoteExisting = TMap<FCkCrowdRemoteAgentId, ItemPtr>{};
 	Existing.Reserve(_ItemSource.Num());
 	for (const auto& Item : _ItemSource)
 	{
 		if (Item.IsValid())
-		{ Existing.Add(Item->Handle, Item); }
+		{ if (Item->IsRemote) { RemoteExisting.Add(Item->RemoteId, Item); }
+		  else { Existing.Add(Item->Handle, Item); } }
 	}
 
 	auto NewItems = TArray<ItemPtr>{};
@@ -245,11 +248,12 @@ auto SCkCrowdDebugger_AgentListPanel::ApplyFilterPipeline(
 		{ continue; }
 
 		auto Item = ItemPtr{};
-		if (auto* Found = Existing.Find(Agent.Handle))
+		if (auto* Found = Agent.IsRemote ? RemoteExisting.Find(Agent.RemoteId) : Existing.Find(Agent.Handle))
 		{
 			Item = *Found;      // stable pointer across refreshes
 			*Item = Agent;      // in-place content update
-			Existing.Remove(Agent.Handle);
+			if (Agent.IsRemote) { RemoteExisting.Remove(Agent.RemoteId); }
+			else { Existing.Remove(Agent.Handle); }
 		}
 		else
 		{
@@ -261,7 +265,7 @@ auto SCkCrowdDebugger_AgentListPanel::ApplyFilterPipeline(
 	}
 
 	// Anything left over vanished from the visible set (destroyed or filtered out).
-	if (Existing.Num() > 0)
+	if (Existing.Num() > 0 || RemoteExisting.Num() > 0)
 	{ NeedsRebuild = true; }
 
 	_ItemSource = MoveTemp(NewItems);
@@ -272,14 +276,18 @@ auto SCkCrowdDebugger_AgentListPanel::ApplyFilterPipeline(
 
 		// Only re-stamp selection on rebuild — otherwise the user's in-flight click is
 		// preserved by the unchanged TSharedPtr identity.
-		if (NeedsRebuild && _ViewModel.IsValid())
+		if (_ViewModel.IsValid() && (NeedsRebuild || _ViewModel->Get_IsRemote()))
 		{
+			if (_ViewModel->Get_IsRemote()) { _ListView->ClearSelection(); }
 			const auto SelectedHandle = _ViewModel->Get_SelectedHandle();
-			if (ck::IsValid(SelectedHandle))
+			const auto* SelectedSnapshot = _ViewModel->Get_SelectedSnapshot();
+			if (ck::IsValid(SelectedHandle) || (SelectedSnapshot && SelectedSnapshot->IsRemote))
 			{
 				for (const auto& Item : _ItemSource)
 				{
-					if (Item.IsValid() && Item->Handle == SelectedHandle)
+					if (Item.IsValid() && (Item->IsRemote
+						? SelectedSnapshot && SelectedSnapshot->IsRemote && Item->RemoteId == SelectedSnapshot->RemoteId
+						: Item->Handle == SelectedHandle))
 					{
 						_ListView->SetSelection(Item, ESelectInfo::Direct);
 						break;
@@ -314,8 +322,8 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 	// falls back to a hash-derived stable colour for agents that never opted in).
 	const auto WeakItem = TWeakPtr<FCkCrowdDebugger_AgentSnapshot>(InItem);
 	auto AgentHandle = InItem->Handle;
-	auto AgentColor = FLinearColor::White;
-	if (auto CrowdAgent = UCk_Utils_CrowdAgent_UE::Cast(AgentHandle); ck::IsValid(CrowdAgent))
+	auto AgentColor = InItem->IsRemote ? InItem->RemoteBaseColor : FLinearColor::White;
+	if (auto CrowdAgent = InItem->IsRemote ? FCk_Handle_CrowdAgent{} : UCk_Utils_CrowdAgent_UE::Cast(AgentHandle); ck::IsValid(CrowdAgent))
 	{
 		AgentColor = UCk_Utils_CrowdAgent_UE::Get_DebugColor(CrowdAgent);
 	}
@@ -370,12 +378,17 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 			// clicks elsewhere in the row still select normally.
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 6, 0)
 			[
-				SNew(SCkDebug_EntityRef)
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth()[ SNew(STextBlock)
+					.Text_Lambda([WeakItem]() { const auto Item = WeakItem.Pin(); return Item.IsValid() && Item->IsRemote
+						? FText::FromString(Item->RemoteDisplayId) : FText::GetEmpty(); }) ]
+				+ SHorizontalBox::Slot().AutoWidth()[ SNew(SCkDebug_EntityRef)
+					.Visibility_Lambda([WeakItem]() { const auto Item = WeakItem.Pin(); return Item.IsValid() && Item->IsRemote ? EVisibility::Collapsed : EVisibility::Visible; })
 					.Entity_Lambda([WeakItem]() -> FCk_Handle
 					{
 						const auto Pinned = WeakItem.Pin();
-						return Pinned.IsValid() ? Pinned->Handle : FCk_Handle{};
-					})
+						return Pinned.IsValid() && !Pinned->IsRemote ? Pinned->Handle : FCk_Handle{};
+					}) ]
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[
@@ -460,6 +473,14 @@ auto SCkCrowdDebugger_AgentListPanel::OnSelectionChanged(
 	if (NOT _ViewModel.IsValid())
 	{ return; }
 
+	if (_ViewModel->Get_IsRemote())
+	{
+		if (InSelectInfo != ESelectInfo::Direct)
+		{ if (InItem.IsValid()) { _ViewModel->TrySelectRemoteAgent(*InItem); }
+		  else { _ViewModel->TryClearRemoteSelection(); } }
+		return;
+	}
+
 	if (NOT InItem.IsValid())
 	{
 		_ViewModel->Set_SelectedHandle(FCk_Handle{});
@@ -500,9 +521,9 @@ auto SCkCrowdDebugger_AgentListPanel::OnContextMenuOpening() -> TSharedPtr<SWidg
 	ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
 		NSLOCTEXT("CkCrowdAgentList", "CopyEntity", "Copy Entity"),
 		NSLOCTEXT("CkCrowdAgentList", "CopyEntityTip", "Copy the full entity handle (ID|Version + debug name) to the clipboard."),
-		ck::Format_UE(TEXT("{}"), Item.Handle));
+		Item.IsRemote ? Item.RemoteDisplayId : ck::Format_UE(TEXT("{}"), Item.Handle));
 
-	if (ck::DebugFocus::Get_CanFocus() && ck::IsValid(Item.Handle))
+	if (!Item.IsRemote && ck::DebugFocus::Get_CanFocus() && ck::IsValid(Item.Handle))
 	{
 		const auto FocusTarget = Item.Handle;
 		MenuBuilder.AddMenuEntry(
@@ -543,7 +564,7 @@ auto SCkCrowdDebugger_AgentListPanel::OnGlobalSelectionSync(
 	-> void
 {
 	if (InSource == TEXT("CrowdDebugger")) { return; }
-	if (NOT _ViewModel.IsValid())          { return; }
+	if (NOT _ViewModel.IsValid() || _ViewModel->Get_IsRemote()) { return; }
 
 	for (const auto& Item : _ItemSource)
 	{
@@ -571,6 +592,7 @@ auto SCkCrowdDebugger_AgentListPanel::OnGlobalSelectionSync(
 
 auto SCkCrowdDebugger_AgentListPanel::SelectEntityExternal(FCk_Entity InEntity) -> void
 {
+	if (_ViewModel.IsValid() && _ViewModel->Get_IsRemote()) { return; }
 	if (NOT _ViewModel.IsValid()) { return; }
 	for (const auto& Item : _ItemSource)
 	{

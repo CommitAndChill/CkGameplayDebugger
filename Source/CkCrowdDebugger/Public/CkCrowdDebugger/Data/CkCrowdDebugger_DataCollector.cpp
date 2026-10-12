@@ -669,3 +669,157 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+
+namespace ck_crowd_debugger_remote
+{
+    auto Convert(ECkCrowdRemoteAgentStatus In, ECkCrowdDebugger_AgentStatus& Out) -> bool
+    {
+        switch (In)
+        {
+        case ECkCrowdRemoteAgentStatus::None: Out = ECkCrowdDebugger_AgentStatus::None; return true;
+        case ECkCrowdRemoteAgentStatus::Idle: Out = ECkCrowdDebugger_AgentStatus::Idle; return true;
+        case ECkCrowdRemoteAgentStatus::Walking: Out = ECkCrowdDebugger_AgentStatus::Walking; return true;
+        case ECkCrowdRemoteAgentStatus::Disabled: Out = ECkCrowdDebugger_AgentStatus::Disabled; return true;
+        case ECkCrowdRemoteAgentStatus::Replanning: Out = ECkCrowdDebugger_AgentStatus::Replanning; return true;
+        case ECkCrowdRemoteAgentStatus::Failed: Out = ECkCrowdDebugger_AgentStatus::Failed; return true;
+        case ECkCrowdRemoteAgentStatus::PlayerProxy: Out = ECkCrowdDebugger_AgentStatus::PlayerProxy; return true;
+        default: return false;
+        }
+    }
+    auto Convert(ECkCrowdRemoteNavPathStatus In, ECk_Nav_PathStatus& Out) -> bool
+    {
+        switch (In)
+        {
+        case ECkCrowdRemoteNavPathStatus::None: Out = ECk_Nav_PathStatus::None; return true;
+        case ECkCrowdRemoteNavPathStatus::Pending: Out = ECk_Nav_PathStatus::Pending; return true;
+        case ECkCrowdRemoteNavPathStatus::Ready: Out = ECk_Nav_PathStatus::Ready; return true;
+        case ECkCrowdRemoteNavPathStatus::Failed: Out = ECk_Nav_PathStatus::Failed; return true;
+        case ECkCrowdRemoteNavPathStatus::Partial: Out = ECk_Nav_PathStatus::Partial; return true;
+        default: return false;
+        }
+    }
+    auto Convert(ECkCrowdRemoteNavPathFailReason In, ECk_Nav_PathFailReason& Out) -> bool
+    {
+        switch (In)
+        {
+        case ECkCrowdRemoteNavPathFailReason::None: Out = ECk_Nav_PathFailReason::None; return true;
+        case ECkCrowdRemoteNavPathFailReason::NoNavSystem: Out = ECk_Nav_PathFailReason::NoNavSystem; return true;
+        case ECkCrowdRemoteNavPathFailReason::NoNavData: Out = ECk_Nav_PathFailReason::NoNavData; return true;
+        case ECkCrowdRemoteNavPathFailReason::NoDefaultFilter: Out = ECk_Nav_PathFailReason::NoDefaultFilter; return true;
+        case ECkCrowdRemoteNavPathFailReason::StartProjectFailed: Out = ECk_Nav_PathFailReason::StartProjectFailed; return true;
+        case ECkCrowdRemoteNavPathFailReason::EndProjectFailed: Out = ECk_Nav_PathFailReason::EndProjectFailed; return true;
+        case ECkCrowdRemoteNavPathFailReason::FindPathError: Out = ECk_Nav_PathFailReason::FindPathError; return true;
+        case ECkCrowdRemoteNavPathFailReason::FindPathNoPath: Out = ECk_Nav_PathFailReason::FindPathNoPath; return true;
+        case ECkCrowdRemoteNavPathFailReason::FindPathInvalid: Out = ECk_Nav_PathFailReason::FindPathInvalid; return true;
+        case ECkCrowdRemoteNavPathFailReason::EmptyPath: Out = ECk_Nav_PathFailReason::EmptyPath; return true;
+        case ECkCrowdRemoteNavPathFailReason::NotAuthority: Out = ECk_Nav_PathFailReason::NotAuthority; return true;
+        case ECkCrowdRemoteNavPathFailReason::BudgetExceeded: Out = ECk_Nav_PathFailReason::BudgetExceeded; return true;
+        case ECkCrowdRemoteNavPathFailReason::PendingTimeout: Out = ECk_Nav_PathFailReason::PendingTimeout; return true;
+        default: return false;
+        }
+    }
+    auto Convert(ECkCrowdRemotePathNetworkFailReason In, ECk_PathNetwork_RouteFailReason& Out) -> bool
+    {
+        switch (In)
+        {
+        case ECkCrowdRemotePathNetworkFailReason::None: Out = ECk_PathNetwork_RouteFailReason::None; return true;
+        case ECkCrowdRemotePathNetworkFailReason::NoNetwork: Out = ECk_PathNetwork_RouteFailReason::NoNetwork; return true;
+        case ECkCrowdRemotePathNetworkFailReason::NetworkNotBuilt: Out = ECk_PathNetwork_RouteFailReason::NetworkNotBuilt; return true;
+        case ECkCrowdRemotePathNetworkFailReason::NoRouteFound: Out = ECk_PathNetwork_RouteFailReason::NoRouteFound; return true;
+        case ECkCrowdRemotePathNetworkFailReason::NotAuthority: Out = ECk_PathNetwork_RouteFailReason::NotAuthority; return true;
+        case ECkCrowdRemotePathNetworkFailReason::BudgetExceeded: Out = ECk_PathNetwork_RouteFailReason::BudgetExceeded; return true;
+        default: return false;
+        }
+    }
+    auto Convert(ECkCrowdRemotePathProvider In, ECk_CrowdAgent_PathProvider& Out) -> bool
+    {
+        switch (In)
+        {
+        case ECkCrowdRemotePathProvider::None: Out = ECk_CrowdAgent_PathProvider::None; return true;
+        case ECkCrowdRemotePathProvider::Navigation: Out = ECk_CrowdAgent_PathProvider::Navigation; return true;
+        case ECkCrowdRemotePathProvider::PathNetwork: Out = ECk_CrowdAgent_PathProvider::PathNetwork; return true;
+        case ECkCrowdRemotePathProvider::VoxelNav: Out = ECk_CrowdAgent_PathProvider::VoxelNav; return true;
+        case ECkCrowdRemotePathProvider::GroundNav: Out = ECk_CrowdAgent_PathProvider::GroundNav; return true;
+        default: return false;
+        }
+    }
+}
+
+auto FCkCrowdDebugger_DataCollector::TryBuildRemoteAgents(
+    const FCkCrowdRemoteSelectionEnvelope& In, TArray<FCkCrowdDebugger_AgentSnapshot>& Out) -> bool
+{
+    Out.Reset();
+    if (!FCkCrowdRemoteDebugValidation::IsValid(In)) { return false; }
+    TArray<FCkCrowdDebugger_AgentSnapshot> Candidate;
+    // Rejections install complete feedback only, never Accepted geometry/state.
+    if (In.Outcome == ECkCrowdRemoteSelectionOutcome::Accepted)
+    {
+        Candidate.Reserve(In.Rows.Num());
+        for (const auto& Row : In.Rows)
+        {
+            FCkCrowdDebugger_AgentSnapshot Agent;
+            Agent.IsRemote = true; Agent.RemoteId = Row.Id;
+            Agent.RemoteSession = In.SessionGeneration; Agent.RemoteSample = In.SampleSequence;
+            Agent.RemoteDisplayId = Row.DisplayId; Agent.RemoteDebugName = Row.DebugName;
+            Agent.RemoteBaseColor = Row.BaseColor; Agent.RemoteHasDebugOverride = Row.bHasDebugOverride;
+            Agent.PrimaryTag = Row.PrimaryTag;
+            Agent.OwnerName = Row.OwnerName;
+            Agent.NeighborCount = Row.NeighborCount;
+            Agent.Position = Row.Position;
+            Agent.Velocity = Row.Velocity;
+            Agent.MaxSpeed = Row.MaxSpeedCmPerSec;
+            Agent.MaxTurnRate = Row.MaxTurnRateRadPerSec;
+            Agent.MaxAcceleration = Row.MaxAccelerationCmPerSecSq;
+            Agent.ArrivalRadius = Row.ArrivalRadiusCm;
+            Agent.ActiveArrivalRadius = Row.ActiveArrivalRadiusCm;
+            Agent.ActiveGoal = Row.ActiveGoal;
+            Agent.IsWalking = Row.bIsWalking;
+            Agent.HasPathTroubleEvent = Row.bHasPathTroubleEvent;
+            Agent.HadPathNetworkFailure = Row.bHadPathNetworkFailure;
+            Agent.UsedNavigationFallback = Row.bUsedNavigationFallback;
+            Agent.PathTroubleAgentPosition = Row.PathTroubleAgentPosition;
+            Agent.PathTroubleGoal = Row.PathTroubleGoal;
+            Agent.PathTroubleEventTimeSeconds = Row.PathTroubleEventTimeSeconds;
+            Agent.PathTroubleSummary = Row.PathTroubleSummary;
+            Agent.PlannedPathPointCount = Row.PlannedPathPointCount;
+            Agent.Radius = Row.RadiusCm;
+            Agent.Height = Row.HeightCm;
+            Agent.SeparationForce = Row.SeparationForce;
+            Agent.SeparationRadius = Row.SeparationRadiusCm;
+            Agent.SeparationWeight = Row.SeparationWeight;
+            Agent.QueueDebugName = Row.QueueDebugName;
+            Agent.QueueCategory = Row.QueueCategory;
+            Agent.QueueState = Row.QueueState;
+            Agent.QueueRank = Row.QueueRank;
+            Agent.RemoteDisplayId = FString::Printf(TEXT("remote %lld:%lld"),
+                static_cast<long long>(Row.Id.WorldGeneration), static_cast<long long>(Row.Id.AgentSerial));
+            if (!Row.DisplayId.IsEmpty()) { Agent.RemoteDisplayId += TEXT(" [") + Row.DisplayId + TEXT("]"); }
+            for (const auto& Tag : Row.Tags) { Agent.Tags.AddTag(Tag); }
+            using namespace ck_crowd_debugger_remote;
+            if (!Convert(Row.Status, Agent.Status) || !Convert(Row.PathFailReason, Agent.PathFailReason) ||
+                !Convert(Row.PathNetworkFailReason, Agent.PathNetworkFailReason) ||
+                !Convert(Row.TroubleNavigationStatus, Agent.TroubleNavigationStatus) ||
+                !Convert(Row.ActiveProvider, Agent.ActiveProvider) ||
+                !Convert(Row.TroubleNavigationFailReason, Agent.TroubleNavigationFailReason)) { return false; }
+            if (In.bHasDetail && Row.Id == In.SelectedId)
+            {
+                Agent.PlannedPath = In.Detail.PlannedPath;
+                for (const auto& Neighbor : In.Detail.Neighbors)
+                { FCkCrowdDebugger_NeighborInfo Copy;
+                  Copy.RemoteId = Neighbor.Id; Copy.Distance = Neighbor.DistanceCm;
+                  Copy.RelativeOffset = Neighbor.RelativeOffset; Agent.Neighbors.Add(MoveTemp(Copy)); }
+            }
+            Candidate.Add(MoveTemp(Agent));
+        }
+    }
+    Out = MoveTemp(Candidate);
+    return true;
+}
+
+auto FCkCrowdDebugger_DataCollector::InstallRemoteAgents(TArray<FCkCrowdDebugger_AgentSnapshot>&& InAgents) -> void
+{
+    // All validation/conversion succeeded. One synchronous non-fallible cache publication.
+    _Agents = MoveTemp(InAgents);
+    _NavmeshStatus = {}; _NavTriVerts.Reset(); _PathNetworkRibbons.Reset(); _Queues.Reset(); _AvoidanceVolumes.Reset();
+}
