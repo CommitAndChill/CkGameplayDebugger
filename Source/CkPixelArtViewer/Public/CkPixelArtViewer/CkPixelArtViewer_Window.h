@@ -1,9 +1,10 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "CkPixelSprite/CkPixelSprite_Asset.h"
 #include "CkPixelSprite/CkPixelSprite_Resources.h"
 #include "CkPixelArtViewer/CkPixelArtViewer_State.h"
+#include "CkPixelArtViewer/CkPixelArtViewer_Settings.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/STreeView.h"
@@ -12,11 +13,36 @@ class SCk_PixelArtViewer_Canvas;
 struct FSlateBrush;
 class SVerticalBox;
 class SHorizontalBox;
+class SScrollBox;
+class SCk_PixelArtViewer_Timeline;
 class SSplitter;
+class SBox;
 
 class CKPIXELARTVIEWER_API SCk_PixelArtViewer_Window : public SCompoundWidget
 {
 public:
+    auto
+        Set_Layout(
+            ECk_PixelArtViewer_Layout InLayout
+        )
+        -> void;
+    auto
+        Get_Layout() const
+        -> ECk_PixelArtViewer_Layout;
+    auto
+        Get_Timeline() const
+        -> TSharedPtr<SCk_PixelArtViewer_Timeline>;
+    auto
+        Get_TimelineScroll() const
+        -> TSharedPtr<SScrollBox>;
+    auto
+        Set_TimelineZoom(
+            double InZoom
+        )
+        -> bool;
+    auto
+        Get_TimelineZoom() const
+        -> double;
     SLATE_BEGIN_ARGS(SCk_PixelArtViewer_Window) {}
     SLATE_END_ARGS()
 
@@ -84,6 +110,47 @@ public:
     }
 
 private:
+    auto
+        Build_AssetToolbar()
+        -> TSharedRef<SWidget>;
+    auto
+        Build_ViewportToolbar()
+        -> TSharedRef<SWidget>;
+    auto
+        Build_Transport()
+        -> TSharedRef<SWidget>;
+    auto
+        Build_Browser()
+        -> TSharedRef<SWidget>;
+    auto
+        Build_Inspector()
+        -> TSharedRef<SWidget>;
+    auto
+        Build_PalettePanel()
+        -> TSharedRef<SWidget>;
+    auto
+        Build_Timeline()
+        -> TSharedRef<SWidget>;
+    auto
+        Build_Menu(
+            FName InMenu
+        )
+        -> TSharedRef<SWidget>;
+    auto
+        Build_MenuButton(
+            FName InMenu, TAttribute<FText> InLabel, FName InIcon = NAME_None
+        )
+        -> TSharedRef<SWidget>;
+    auto
+        Rebuild_Workspace()
+        -> void;
+    auto
+        Toggle_Inspector()
+        -> void;
+    auto
+        Get_FrameText() const
+        -> FText;
+
     struct FOverrideGeneration
     {
         TStrongObjectPtr<UCk_PixelSpriteAsset_UE> _Asset;
@@ -237,10 +304,20 @@ private:
     TSharedPtr<SVerticalBox> _AnimationList;
     TSharedPtr<SVerticalBox> _PaletteList;
     TSharedPtr<SSplitter> _MainSplitter;
+    TSharedPtr<SBox> _Workspace;
+    TSharedPtr<SWidget> _BrowserPanel;
+    TSharedPtr<SWidget> _CenterPanel;
+    TSharedPtr<SWidget> _InspectorPanel;
+    ECk_PixelArtViewer_Layout _Layout = ECk_PixelArtViewer_Layout::Studio;
+    bool _InspectorVisible = true;
+    int32 _BrowserTab = 0;
+    int32 _InspectorTab = 0;
     TSharedPtr<STreeView<TSharedPtr<FSourceNode>>> _SourceTree;
     TArray<TSharedPtr<FSourceNode>> _SourceRoots;
-    TSharedPtr<SHorizontalBox> _TimelineList;
-    TArray<TSharedPtr<FSlateBrush>> _ThumbnailBrushes;
+    TSharedPtr<SCk_PixelArtViewer_Timeline> _Timeline;
+    TSharedPtr<SScrollBox> _TimelineScroll;
+    double _TimelineZoom = 1.0;
+    TOptional<double> _TimelineZoomAnchor;
     FString _Status;
     uint64 _RevisionSeen = MAX_uint64;
     uint64 _PreparedRevision = MAX_uint64;

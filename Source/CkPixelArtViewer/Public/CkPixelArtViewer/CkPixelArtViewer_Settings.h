@@ -5,6 +5,13 @@
 
 #include "CkPixelArtViewer_Settings.generated.h"
 
+UENUM()
+enum class ECk_PixelArtViewer_Layout : uint8
+{
+    Studio,
+    Focused
+};
+
 /** Personal preview preferences. Authored sprite data and temporary palette overrides stay in memory. */
 UCLASS(Config = GameUserSettings, meta = (DisplayName = "Ck Pixel Art Viewer"))
 class CKPIXELARTVIEWER_API UCkPixelArtViewerSettings : public UDeveloperSettings
@@ -12,6 +19,9 @@ class CKPIXELARTVIEWER_API UCkPixelArtViewerSettings : public UDeveloperSettings
     GENERATED_BODY()
 
 public:
+    UPROPERTY(Config, EditAnywhere, Category = "Layout")
+    ECk_PixelArtViewer_Layout _Layout = ECk_PixelArtViewer_Layout::Studio;
+
     virtual auto
         GetContainerName() const
         -> FName override

@@ -38,15 +38,28 @@ never uploads on each tick.
 The left panel lists animations and navigable source folders built from each
 frame's relative authored source path. Clicking a leaf selects its first
 referencing animation/frame; unreferenced leaves leave selection unchanged.
-Absolute source paths appear in leaf tooltips. The three main panels have
-resizable, normalized per-user widths; malformed saved widths fall back to a
+Absolute source paths appear in leaf tooltips. Studio keeps three resizable panels; Focused uses the same preview widgets with
+the browser hidden and an optional inspector. A layout dropdown preserves the
+asset, animation, frame, clock, prepared timeline, palette overrides and texture
+generation while changing the panel slots. Studio has normalized per-user widths; malformed saved widths fall back to a
 usable layout. The right panel shows frame
 anchors, source information, diagnostics, palette swatches and usage counts,
 comparison statistics, onion offset controls and temporary RGBA overrides.
-The thumbnail timeline shows frame numbers, authored durations and the playhead;
-the adjacent readout and slider show total/current time and allow scrubbing.
-The toolbar exposes render mode, scale, outline, background, onion and comparison
-controls. The native editor tab can be maximized through Unreal docking; Fit and
+The time track uses authored duration-proportional blocks, fixed 56 px thumbnails
+clipped per block, a seconds ruler and a single playhead. Its separate Fit/2x/4x/8x
+zoom expands a horizontally scrolling track without changing canvas zoom. Click
+and drag scrub the authored axis, preserving the current PingPong return visit
+where that source frame has one. Loop wraps the displayed position; PingPong
+return visits traverse the interior authored intervals backward. The absolute
+playback clock and endpoint hold semantics remain unchanged. Sampling quantizes
+the cursor; frame retention does not retime it. Manual steps pin the cursor at
+the selected authored prefix. The adjacent readout shows authored current/total time.
+The top asset toolbar exposes browse, reimport, export, animation and layout menus.
+Viewport Show, Zoom, onion and comparison menus sit above the canvas. Rendering
+settings live in a collapsible inspector; Details and Palette tabs share it.
+Icon playback controls sit under the center timeline with mode, speed and overflow
+menus for sampling, frame retention, Stop and Restart. Inspector visibility is
+separate from the layout selection; switching to Studio restores its three panels. The native editor tab can be maximized through Unreal docking; Fit and
 Center/reset control the canvas view separately: Center keeps the current zoom
 and centers the whole side-by-side comparison, while Reset restores the default
 zoom and pan. Shortcuts are Space, arrows, Home, End,
@@ -72,3 +85,16 @@ unreferenced-source selection safety, and writes
 `Saved/PixelSpriteAcceptance/Viewer-SourceHierarchy.png` for visual review.
 A test discovery
 result or NullRHI run alone does not establish visual correctness.
+
+`Ck.PixelArtViewer.LayoutSwitch` physically uses the layout dropdown and inspector
+toggle, verifies shared preview state and captures
+`Saved/PixelSpriteAcceptance/Viewer-Studio.png` and `Viewer-Focused.png`.
+
+`Ck.PixelArtViewer.TimeTrack` imports the eight-frame Sproutling through the
+production factory, checks authored block proportions, fixed thumbnail size and
+clipping/full reveal, physical zoom menu and scrub input, horizontal scrolling,
+independent canvas zoom, layout retention, Loop wrap and PingPong return motion.
+It captures `Sproutling-TimeTrack-Fit.png` and `Sproutling-TimeTrack-Zoom.png`
+under `Saved/PixelSpriteAcceptance/`. Invalid timeline candidates leave the
+current frames unchanged. The focused viewer gate passed 5/5 in TimelineGate6;
+four mounted tests used the real renderer.

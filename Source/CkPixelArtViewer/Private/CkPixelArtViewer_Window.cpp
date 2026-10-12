@@ -1,6 +1,7 @@
-#include "CkPixelArtViewer/CkPixelArtViewer_Window.h"
+﻿#include "CkPixelArtViewer/CkPixelArtViewer_Window.h"
 
 #include "CkPixelArtViewer/CkPixelArtViewer_Canvas.h"
+#include "CkPixelArtViewer/CkPixelArtViewer_Timeline.h"
 #include "CkPixelArtViewer/CkPixelArtViewer_Settings.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -86,27 +87,17 @@ auto
     _State->_RenderSettings._Outline = Preferences->_Outline;
     _State->_RenderSettings._OutlineColor = Preferences->_OutlineColor;
     _State->_RenderSettings._Background = Preferences->_Background;
-    auto LeftWeight = Preferences->_LeftPanelWeight;
-    auto CanvasWeight = Preferences->_CanvasPanelWeight;
-    auto RightWeight = Preferences->_RightPanelWeight;
-    const auto WeightSum = LeftWeight + CanvasWeight + RightWeight;
-    if (NOT std::isfinite(LeftWeight) || NOT std::isfinite(CanvasWeight) ||
-        NOT std::isfinite(RightWeight) || NOT std::isfinite(WeightSum) ||
-        LeftWeight <= 0.0f || CanvasWeight <= 0.0f || RightWeight <= 0.0f ||
-        WeightSum <= 0.0f || LeftWeight / WeightSum < 0.03f ||
-        CanvasWeight / WeightSum < 0.03f || RightWeight / WeightSum < 0.03f)
-    {
-        LeftWeight = 0.20f;
-        CanvasWeight = 0.58f;
-        RightWeight = 0.22f;
-    }
-    else
-    {
-        LeftWeight /= WeightSum;
-        CanvasWeight /= WeightSum;
-        RightWeight /= WeightSum;
-    }
-
+    _Layout = Preferences->_Layout == ECk_PixelArtViewer_Layout::Focused
+        ? ECk_PixelArtViewer_Layout::Focused : ECk_PixelArtViewer_Layout::Studio;
+    _InspectorVisible = _Layout == ECk_PixelArtViewer_Layout::Studio;
+    _BrowserPanel = Build_Browser();
+    _InspectorPanel = Build_Inspector();
+    _CenterPanel = SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()[Build_ViewportToolbar()]
+        + SVerticalBox::Slot().FillHeight(1)
+        [SAssignNew(_Canvas, SCk_PixelArtViewer_Canvas).State(_State)]
+        + SVerticalBox::Slot().AutoHeight()[Build_Timeline()]
+        + SVerticalBox::Slot().AutoHeight()[Build_Transport()];
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
@@ -114,615 +105,16 @@ auto
         .ToolTabId(TEXT("CkPixelArtViewer"))
         .StatusText(this, &SCk_PixelArtViewer_Window::Get_StatusText)
         .Content()
-        [
-            SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight().Padding(4)
-            [
-                SNew(SScrollBox).Orientation(Orient_Horizontal)
-                + SScrollBox::Slot()
-                [
-                    SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Play / Pause")))
-                        .OnClicked_Lambda([this]
-                        {
-                            if (NOT _State->_Playing && _State->_Playback == ECk_PixelSprite_Playback::Once &&
-                                _Snapshot.IsValid() && _Snapshot->_Animations.IsValidIndex(_AnimationIndex))
-                            {
-                                const auto End = _PreparedCycleMilliseconds;
-                                if (_State->_Reverse && _State->_TimeMilliseconds <= 0.0)
-                                {
-                                    _State->Seek(End);
-                                }
-                                else if (NOT _State->_Reverse && _State->_TimeMilliseconds >= End)
-                                {
-                                    _State->Seek(0.0);
-                                }
-                            }
-                            _State->_Playing = NOT _State->_Playing;
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Stop")))
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_Playing = false;
-                            _State->Seek(0.0);
-                            Refresh_Frame();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Restart")))
-                        .OnClicked_Lambda([this]
-                        {
-                            const auto End = _Prepared.IsValid() ? _PreparedCycleMilliseconds : 0.0;
-                            _State->Seek(_State->_Reverse ? End : 0.0);
-                            _State->_Playing = true;
-                            Refresh_Frame();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("|<")))
-                        .OnClicked_Lambda([this]
-                        {
-                            Jump_Edge(false);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("<")))
-                        .OnClicked_Lambda([this]
-                        {
-                            Step_Frame(-1);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT(">")))
-                        .OnClicked_Lambda([this]
-                        {
-                            Step_Frame(1);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT(">|")))
-                        .OnClicked_Lambda([this]
-                        {
-                            Jump_Edge(true);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(this, &SCk_PixelArtViewer_Window::Get_PlaybackText)
-                        .OnClicked_Lambda([this]
-                        {
-                            const auto Next = _State->_Playback == ECk_PixelSprite_Playback::Loop
-                                ? ECk_PixelSprite_Playback::Once
-                                : _State->_Playback == ECk_PixelSprite_Playback::Once
-                                    ? ECk_PixelSprite_Playback::PingPong
-                                    : ECk_PixelSprite_Playback::Loop;
-                            const auto Previous = _State->_Playback;
-                            _State->_Playback = Next;
-                            if (NOT Ensure_Prepared())
-                            {
-                                _State->_Playback = Previous;
-                                _Status = TEXT("Cannot prepare the selected playback mode");
-                                return FReply::Handled();
-                            }
-                            Refresh_Frame();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-
-                        {
-                            return FText::FromString(_State->_Reverse ? TEXT("Reverse: on") : TEXT("Reverse: off"));
-                        })
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_Reverse = NOT _State->_Reverse;
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(this, &SCk_PixelArtViewer_Window::Get_SpeedText)
-                        .OnClicked_Lambda([this]
-                        {
-                            const auto Speeds = TArray<double>{0.25, 0.5, 1.0, 2.0, 4.0};
-                            auto Index = Speeds.IndexOfByKey(_State->_Speed);
-                            _State->Set_Speed(Speeds[(Index + 1) % Speeds.Num()]);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(this, &SCk_PixelArtViewer_Window::Get_SamplingText)
-                        .OnClicked_Lambda([this]
-                        {
-                            const auto Values = TArray<int32>{0, 30, 15, 10, 5};
-                            const auto Index = Values.IndexOfByKey(_State->_SamplingFps);
-                            _State->Set_SamplingFps(Values[(Index + 1) % Values.Num()]);
-                            Refresh_Frame();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(this, &SCk_PixelArtViewer_Window::Get_DecimationText)
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->Set_Decimation(_State->_Decimation % 3 + 1);
-                            Refresh_Frame();
-                            return FReply::Handled();
-                        })]
-                ]
-            ]
-            + SVerticalBox::Slot().AutoHeight().Padding(4)
-            [
-                SNew(SScrollBox).Orientation(Orient_Horizontal)
-                + SScrollBox::Slot()
-                [
-                    SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Fit")))
-                        .OnClicked_Lambda([this]
-                        {
-                            _Canvas->Fit_View();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Center")))
-                        .OnClicked_Lambda([this]
-                        {
-                            _Canvas->Center_View();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Reset view")))
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->Reset_View();
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("1x")))
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->Set_Zoom(1.0);
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("4x")))
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->Set_Zoom(4.0);
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("16x")))
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->Set_Zoom(16.0);
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(_State->_ShowChecker ? TEXT("Checker on") : TEXT("Checker off"));
-                    })
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_ShowChecker = NOT _State->_ShowChecker;
-                            Save_Preferences();
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(_State->_ShowGrid ? TEXT("Grid on") : TEXT("Grid off"));
-                    })
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_ShowGrid = NOT _State->_ShowGrid;
-                            Save_Preferences();
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(_State->_ShowAxes ? TEXT("Axes on") : TEXT("Axes off"));
-                    })
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_ShowAxes = NOT _State->_ShowAxes;
-                            Save_Preferences();
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(_State->_ShowCrosshair ? TEXT("Crosshair on") : TEXT("Crosshair off"));
-                    })
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_ShowCrosshair = NOT _State->_ShowCrosshair;
-                            Save_Preferences();
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled();
-                        })]
-                ]
-            ]
-            + SVerticalBox::Slot().AutoHeight().Padding(4)
-            [
-                SNew(SScrollBox).Orientation(Orient_Horizontal)
-                + SScrollBox::Slot()
-                [
-                    SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(_State->_ShowOnion ? TEXT("Onion on") : TEXT("Onion off"));
-                    })
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_ShowOnion = NOT _State->_ShowOnion;
-                            Save_Preferences();
-                            Refresh_Decorations();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(FString::Printf(TEXT("Before %d"), _State->_PreviousOnionCount));
-                    })
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_PreviousOnionCount = (_State->_PreviousOnionCount + 1) % 5;
-                            Save_Preferences();
-                            Refresh_Decorations();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(FString::Printf(TEXT("After %d"), _State->_FollowingOnionCount));
-                    })
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_FollowingOnionCount = (_State->_FollowingOnionCount + 1) % 5;
-                            Save_Preferences();
-                            Refresh_Decorations();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SBox).WidthOverride(96.0f)
-                        [SNew(SSlider).ToolTipText(FText::FromString(TEXT("Onion opacity")))
-                            .Value_Lambda([this]
-                            {
-                                return _State->_OnionOpacity / 0.75f;
-                            })
-                            .OnValueChanged_Lambda([this](float InValue)
-
-                            {
-                                _State->_OnionOpacity = InValue * 0.75f;
-                                Save_Preferences();
-                                _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            })]]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Prev tint")))
-                        .OnClicked_Lambda([this] { _State->_PreviousTint = _State->_PreviousTint.B > 0.8f
-                            ? FLinearColor{0.4f, 1.0f, 0.4f, 1.0f} : FLinearColor{0.35f, 0.65f, 1.0f, 1.0f};
-                            Save_Preferences();
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled(); })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Next tint")))
-                        .OnClicked_Lambda([this] { _State->_FollowingTint = _State->_FollowingTint.R > 0.9f
-                            ? FLinearColor{1.0f, 0.4f, 1.0f, 1.0f} : FLinearColor{1.0f, 0.45f, 0.35f, 1.0f};
-                            Save_Preferences();
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled(); })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(this, &SCk_PixelArtViewer_Window::Get_ComparisonText)
-                        .OnClicked_Lambda([this] { _State->_Comparison = static_cast<ECk_PixelArtViewer_Comparison>(
-                            (static_cast<int32>(_State->_Comparison) + 1) % 4);
-                            Refresh_Decorations();
-                            return FReply::Handled(); })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Compare -")))
-                        .OnClicked_Lambda([this]
-                        {
-                            --_State->_ComparisonFrame;
-                            Refresh_Decorations();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Compare +")))
-                        .OnClicked_Lambda([this]
-                        {
-                            ++_State->_ComparisonFrame;
-                            Refresh_Decorations();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(_State->_ShowDifferenceBounds ? TEXT("Bounds on") : TEXT("Bounds off"));
-                    })
-                        .OnClicked_Lambda([this]
-                        {
-                            _State->_ShowDifferenceBounds = NOT _State->_ShowDifferenceBounds;
-                            _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this] { return FText::FromString(_State->_RenderSettings._Mode == ECk_PixelSprite_RenderMode::Nearest
-                        ? TEXT("Nearest") : _State->_RenderSettings._Mode == ECk_PixelSprite_RenderMode::Bilinear ? TEXT("Bilinear") : TEXT("Smooth silhouette")); })
-                        .OnClicked_Lambda([this] { Set_RenderMode(static_cast<ECk_PixelSprite_RenderMode>(
-                            (static_cast<int32>(_State->_RenderSettings._Mode) + 1) % 3));
-                            return FReply::Handled(); })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(FString::Printf(TEXT("Render %dx"), _State->_RenderSettings._Scale));
-                    })
-                        .OnClicked_Lambda([this]
-                        {
-                            Set_RenderScale(_State->_RenderSettings._Scale % 8 + 1);
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text_Lambda([this]
-                    {
-                        return FText::FromString(_State->_RenderSettings._Outline ? TEXT("Outline on") : TEXT("Outline off"));
-                    })
-                        .OnClicked_Lambda([this] { _State->_RenderSettings._Outline = NOT _State->_RenderSettings._Outline;
-                            if (Rebuild_BaseResources())
-                            {
-                                Save_Preferences();
-                            } return FReply::Handled(); })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Background")))
-                        .OnClicked_Lambda([this] { auto& Color = _State->_RenderSettings._Background;
-                            Color = Color == FColor::Transparent ? FColor::Black
-                                : Color == FColor::Black ? FColor::White : FColor::Transparent;
-                            if (Rebuild_BaseResources())
-                            {
-                                Save_Preferences();
-                            } return FReply::Handled(); })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Export frame")))
-                        .OnClicked_Lambda([this]
-                        {
-                            Export_Frame();
-                            return FReply::Handled();
-                        })]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(2)
-                    [SNew(SButton).Text(FText::FromString(TEXT("Export sheet")))
-                        .OnClicked_Lambda([this]
-                        {
-                            Export_Sheet();
-                            return FReply::Handled();
-                        })]
-                ]
-            ]
-            + SVerticalBox::Slot().FillHeight(1.0f)
-            [
-                SAssignNew(_MainSplitter, SSplitter)
-                .OnSplitterFinishedResizing(this, &SCk_PixelArtViewer_Window::Save_LayoutPreferences)
-                + SSplitter::Slot().Value(LeftWeight)
-                [
-                    SNew(SBorder).Padding(6)
-                    [
-                        SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight()
-                        [SNew(STextBlock).Text(FText::FromString(TEXT("Asset / animations")))]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 6)
-                        [
-                            SNew(SObjectPropertyEntryBox)
-                            .AllowedClass(UCk_PixelSpriteAsset_UE::StaticClass())
-                            .ObjectPath_Lambda([this]
-                            {
-                                return _Asset.IsValid() ? _Asset->GetPathName() : FString{};
-                            })
-                            .OnObjectChanged_Lambda([this](const FAssetData& InData)
-                            {
-                                auto Asset = TObjectPtr<UCk_PixelSpriteAsset_UE>{
-                                    Cast<UCk_PixelSpriteAsset_UE>(InData.GetAsset())};
-                                if (Asset)
-                                {
-                                    Set_Asset(*Asset);
-                                }
-                            })
-                        ]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 4)
-                        [SNew(STextBlock).Text(this, &SCk_PixelArtViewer_Window::Get_AssetText)
-                            .AutoWrapText(true)]
-                        + SVerticalBox::Slot().FillHeight(1.0f)
-                        [SNew(SScrollBox)
-                            + SScrollBox::Slot()
-                            [SAssignNew(_AnimationList, SVerticalBox)]]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0, 6)
-                        [SNew(STextBlock).Text(FText::FromString(TEXT("Source files")))]
-                        + SVerticalBox::Slot().FillHeight(1.0f)
-                        [SAssignNew(_SourceTree, STreeView<TSharedPtr<FSourceNode>>)
-                            .TreeItemsSource(&_SourceRoots)
-                            .OnGenerateRow(this, &SCk_PixelArtViewer_Window::Generate_SourceRow)
-                            .OnGetChildren(this, &SCk_PixelArtViewer_Window::Get_SourceChildren)]
-                    ]
-                ]
-                + SSplitter::Slot().Value(CanvasWeight)
-                [
-                    SNew(SVerticalBox)
-                    + SVerticalBox::Slot().FillHeight(1.0f)
-                    [SAssignNew(_Canvas, SCk_PixelArtViewer_Canvas).State(_State)]
-                    + SVerticalBox::Slot().AutoHeight().Padding(4)
-                    [SNew(STextBlock).Text_Lambda([this]
-
-                        {
-                            return _Canvas.IsValid() ? _Canvas->Get_HoverText() : FText::GetEmpty();
-                        })]
-                ]
-                + SSplitter::Slot().Value(RightWeight)
-                [
-                    SNew(SBorder).Padding(6)
-                    [SNew(SScrollBox)
-                        + SScrollBox::Slot()
-                        [SNew(SVerticalBox)
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(STextBlock).Text(this, &SCk_PixelArtViewer_Window::Get_DetailText)
-                                .AutoWrapText(true)]
-                            + SVerticalBox::Slot().AutoHeight().Padding(0, 8)
-                            [SNew(STextBlock).Text(FText::FromString(TEXT("Palette (selected source)")))]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SButton).Text_Lambda([this] { return FText::FromString(_State->_HighlightPalette
-                                ? TEXT("Highlight selected on") : TEXT("Highlight selected off")); })
-                                .OnClicked_Lambda([this] { _State->_HighlightPalette = NOT _State->_HighlightPalette;
-                                    _Canvas->Invalidate(EInvalidateWidgetReason::Paint);
-                                    return FReply::Handled(); })]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SButton).Text(FText::FromString(TEXT("Preview override selected")))
-                                .ToolTipText(FText::FromString(TEXT("Cycle a temporary color for this source's selected palette index")))
-                                .OnClicked_Lambda([this]
-                                {
-                                    if (_State->_SelectedPaletteIndex == INDEX_NONE)
-                                    {
-                                        return FReply::Handled();
-                                    }
-                                    const auto Index = _State->_SelectedPaletteIndex;
-                                    auto Next = FColor::Red;
-                                    if (_State->_TemporaryPaletteOverrides.Contains(Index))
-                                    {
-                                        const auto& Previous = _State->_TemporaryPaletteOverrides.FindChecked(Index);
-                                        Next = Previous == FColor::Red ? FColor::Green
-                                            : Previous == FColor::Green ? FColor::Blue : FColor::Red;
-                                    }
-                                    _State->_TemporaryPaletteOverrides.Add(Index, Next);
-                                    _OverrideGenerations.Remove(_CurrentSourceIndex);
-                                    Refresh_Decorations();
-                                    return FReply::Handled();
-                                })]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SButton).Text(FText::FromString(TEXT("Clear preview overrides")))
-                                .OnClicked_Lambda([this] { _State->_TemporaryPaletteOverrides.Reset();
-                                    _SourceOverrides.Remove(_CurrentSourceIndex);
-                                    _OverrideGenerations.Remove(_CurrentSourceIndex);
-                                    Refresh_Decorations();
-                                    return FReply::Handled(); })]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(STextBlock).Text(FText::FromString(TEXT("Selected override RGBA")))]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SSlider).ToolTipText(FText::FromString(TEXT("Red channel")))
-                                .Value_Lambda([this]
-                                {
-                                    return Get_SelectedPaletteColor().R / 255.0f;
-                                })
-                                .OnValueChanged_Lambda([this](float InValue)
-
-                                {
-                                    Set_SelectedPaletteChannel(0, FMath::RoundToInt(InValue * 255.0f));
-                                })]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SSlider).ToolTipText(FText::FromString(TEXT("Green channel")))
-                                .Value_Lambda([this]
-                                {
-                                    return Get_SelectedPaletteColor().G / 255.0f;
-                                })
-                                .OnValueChanged_Lambda([this](float InValue)
-
-                                {
-                                    Set_SelectedPaletteChannel(1, FMath::RoundToInt(InValue * 255.0f));
-                                })]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SSlider).ToolTipText(FText::FromString(TEXT("Blue channel")))
-                                .Value_Lambda([this]
-                                {
-                                    return Get_SelectedPaletteColor().B / 255.0f;
-                                })
-                                .OnValueChanged_Lambda([this](float InValue)
-
-                                {
-                                    Set_SelectedPaletteChannel(2, FMath::RoundToInt(InValue * 255.0f));
-                                })]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SSlider).ToolTipText(FText::FromString(TEXT("Alpha channel")))
-                                .Value_Lambda([this]
-                                {
-                                    return Get_SelectedPaletteColor().A / 255.0f;
-                                })
-                                .OnValueChanged_Lambda([this](float InValue)
-
-                                {
-                                    Set_SelectedPaletteChannel(3, FMath::RoundToInt(InValue * 255.0f));
-                                })]
-                            + SVerticalBox::Slot().AutoHeight().Padding(0, 4)
-                            [SNew(STextBlock).Text(FText::FromString(TEXT("Onion offsets (empty = all)")))]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SButton).Text(FText::FromString(TEXT("All surrounding offsets")))
-                                .OnClicked_Lambda([this] { _State->_SelectedPreviousOffsets.Reset();
-                                    _State->_SelectedFollowingOffsets.Reset();
-                                    Refresh_Decorations();
-                                    return FReply::Handled(); })]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SButton).Text_Lambda([this] { return FText::FromString(FString::Printf(
-                                TEXT("Previous offset: %s"), _State->_SelectedPreviousOffsets.IsEmpty()
-                                    ? TEXT("all") : *FString::FromInt(*_State->_SelectedPreviousOffsets.CreateConstIterator()))); })
-                                .OnClicked_Lambda([this] { const auto Next = _State->_SelectedPreviousOffsets.IsEmpty()
-                                    ? 1 : (*_State->_SelectedPreviousOffsets.CreateConstIterator() % 4) + 1;
-                                    _State->_SelectedPreviousOffsets.Reset();
-                                    _State->_SelectedPreviousOffsets.Add(Next);
-                                    Refresh_Decorations();
-                                    return FReply::Handled(); })]
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SButton).Text_Lambda([this] { return FText::FromString(FString::Printf(
-                                TEXT("Following offset: %s"), _State->_SelectedFollowingOffsets.IsEmpty()
-                                    ? TEXT("all") : *FString::FromInt(*_State->_SelectedFollowingOffsets.CreateConstIterator()))); })
-                                .OnClicked_Lambda([this] { const auto Next = _State->_SelectedFollowingOffsets.IsEmpty()
-                                    ? 1 : (*_State->_SelectedFollowingOffsets.CreateConstIterator() % 4) + 1;
-                                    _State->_SelectedFollowingOffsets.Reset();
-                                    _State->_SelectedFollowingOffsets.Add(Next);
-                                    Refresh_Decorations();
-                                    return FReply::Handled(); })]
-                            + SVerticalBox::Slot().AutoHeight().Padding(0, 4)
-                            [SAssignNew(_PaletteList, SVerticalBox)]
-                        ]]
-                ]
-            ]
-            + SVerticalBox::Slot().AutoHeight().Padding(6)
-            [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight()
-                [SNew(STextBlock).Text(FText::FromString(TEXT("Frame timeline • click a thumbnail to scrub")))]
-                + SVerticalBox::Slot().AutoHeight()
-                [SNew(SBox).HeightOverride(84.0f)
-                    [SNew(SScrollBox).Orientation(Orient_Horizontal)
-                        + SScrollBox::Slot()
-                        [SAssignNew(_TimelineList, SHorizontalBox)]]]
-                + SVerticalBox::Slot().AutoHeight()
-                [SNew(STextBlock).Text(this, &SCk_PixelArtViewer_Window::Get_TimeText)]
-                + SVerticalBox::Slot().AutoHeight()
-                [SNew(SSlider)
-                    .Value_Lambda([this]() -> float
-                    {
-                        if (NOT _Snapshot.IsValid() || NOT _Snapshot->_Animations.IsValidIndex(_AnimationIndex))
-                        {
-                            return 0.0f;
-                        }
-                        const auto Duration = _PreparedCycleMilliseconds;
-                        return Duration > 0.0 ? static_cast<float>(FMath::Clamp(_State->_TimeMilliseconds / Duration, 0.0, 1.0)) : 0.0f;
-                    })
-                    .OnValueChanged_Lambda([this](float InValue)
-                    {
-                        if (NOT _Snapshot.IsValid() || NOT _Snapshot->_Animations.IsValidIndex(_AnimationIndex))
-                        {
-                            return;
-                        }
-                        _State->_Playing = false;
-                        _State->Seek(InValue * _PreparedCycleMilliseconds);
-                        Refresh_Frame();
-                    })]
-            ]
-        ]
+        [SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()[Build_AssetToolbar()]
+            + SVerticalBox::Slot().FillHeight(1)[SAssignNew(_Workspace, SBox)]
+            + SVerticalBox::Slot().AutoHeight().Padding(8, 3)
+            [SNew(STextBlock).Text_Lambda([this]
+            {
+                return _Canvas.IsValid() ? _Canvas->Get_HoverText() : FText::GetEmpty();
+            })]]
     ];
+    Rebuild_Workspace();
 }
 
 auto
@@ -1182,64 +574,29 @@ auto
     Rebuild_Timeline()
     -> void
 {
-    if (NOT _TimelineList.IsValid())
+    if (NOT _Timeline.IsValid())
     {
         return;
     }
-    _TimelineList->ClearChildren();
-    _ThumbnailBrushes.Reset();
-    if (NOT _Snapshot.IsValid() || NOT _Resources.IsValid() ||
-        NOT _Snapshot->_Animations.IsValidIndex(_AnimationIndex))
+    auto Frames = TArray<FCk_PixelArtViewer_TimelineFrame>{};
+    if (_Snapshot.IsValid() && _Resources.IsValid() && _Snapshot->_Animations.IsValidIndex(_AnimationIndex))
     {
-        return;
-    }
-    const auto& Animation = _Snapshot->_Animations[_AnimationIndex];
-    const auto Total = _PreparedCycleMilliseconds;
-    const auto Average = Animation._Frames.IsEmpty()
-        ? 1.0 : FMath::Max(1.0, Total / Animation._Frames.Num());
-    for (int32 Index = 0; Index < Animation._Frames.Num(); ++Index)
-    {
-        const auto& Frame = Animation._Frames[Index];
-        const auto Texture = _Resources->Get_Texture(Frame._SourceIndex);
-        if (NOT Texture)
+        const auto& Animation = _Snapshot->_Animations[_AnimationIndex];
+        for (const auto& Frame : Animation._Frames)
         {
-            continue;
+            const auto Texture = _Resources->Get_Texture(Frame._SourceIndex);
+            if (NOT Texture)
+            {
+                return;
+            }
+            auto Brush = MakeShared<FSlateBrush>();
+            Brush->DrawAs = ESlateBrushDrawType::Image;
+            Brush->SetResourceObject(Texture.Get());
+            Brush->ImageSize = FVector2D{56.0, 56.0};
+            Frames.Add({Frame._DurationMilliseconds, Frame._Source, Brush});
         }
-        auto Brush = MakeShared<FSlateBrush>();
-        Brush->DrawAs = ESlateBrushDrawType::Image;
-        Brush->SetResourceObject(Texture.Get());
-        Brush->ImageSize = FVector2D{48.0, 48.0};
-        _ThumbnailBrushes.Add(Brush);
-        const auto Width = FMath::Clamp(Frame._DurationMilliseconds / Average * 72.0, 62.0, 160.0);
-        _TimelineList->AddSlot().AutoWidth().Padding(2)
-        [SNew(SBox).WidthOverride(Width)
-            [SNew(SButton)
-                .ToolTipText(FText::FromString(Frame._Source))
-                .OnClicked_Lambda([this, Index]
-                {
-                    if (NOT _Snapshot.IsValid() || NOT _Snapshot->_Animations.IsValidIndex(_AnimationIndex))
-                    {
-                        return FReply::Handled();
-                    }
-                    _State->_Playing = false;
-                    if (Ensure_Prepared())
-                    {
-                        _State->Select_Frame(*_Prepared, _Snapshot->_Animations[_AnimationIndex], Index);
-                    }
-                    Refresh_Frame();
-                    return FReply::Handled();
-                })
-                [SNew(SVerticalBox)
-                    + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-                    [SNew(SImage).Image(&Brush.Get())]
-                    + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-                    [SNew(STextBlock).Text_Lambda([this, Index, Duration = Frame._DurationMilliseconds]
-                    {
-                        return FText::FromString(FString::Printf(TEXT("%s%d  %.0f ms"),
-                            _SelectedFrame == Index ? TEXT("▶ ") : TEXT(""), Index + 1, Duration));
-                    })]
-                ]]];
     }
+    _Timeline->Set_Frames(MoveTemp(Frames));
 }
 
 auto
@@ -1589,7 +946,8 @@ auto
     Save_LayoutPreferences()
     -> void
 {
-    if (NOT _MainSplitter.IsValid() || NOT _MainSplitter->IsValidSlotIndex(2))
+    if (_Layout != ECk_PixelArtViewer_Layout::Studio || NOT _InspectorVisible
+        || NOT _MainSplitter.IsValid() || NOT _MainSplitter->IsValidSlotIndex(2))
     {
         return;
     }
@@ -1813,6 +1171,21 @@ auto
     -> void
 {
     SCompoundWidget::Tick(InGeometry, InCurrentTime, InDeltaTime);
+    if (_Timeline.IsValid() && _TimelineScroll.IsValid())
+    {
+        const auto ViewWidth = _TimelineScroll->GetCachedGeometry().GetLocalSize().X;
+        if (ViewWidth > 0.0)
+        {
+            _Timeline->Set_TrackWidth(static_cast<float>(ViewWidth * _TimelineZoom));
+            if (_TimelineZoomAnchor.IsSet())
+            {
+                _TimelineScroll->SetScrollOffset(_TimelineZoom == 1.0 ? 0.0f
+                    : FMath::Max(0.0f, static_cast<float>(_TimelineZoomAnchor.GetValue()
+                        * ViewWidth * _TimelineZoom - ViewWidth * 0.5)));
+                _TimelineZoomAnchor.Reset();
+            }
+        }
+    }
     Refresh_Asset();
     if (NOT _Snapshot.IsValid() || NOT _Snapshot->_Animations.IsValidIndex(_AnimationIndex))
     {
@@ -1976,9 +1349,19 @@ auto
     {
         return FText::FromString(TEXT("Time: —"));
     }
-    const auto Duration = _PreparedCycleMilliseconds;
-    return FText::FromString(FString::Printf(TEXT("Time %.3f / %.3f ms    Frame %d"),
-        _State->_TimeMilliseconds, Duration, _SelectedFrame + 1));
+    const auto& Animation = _Snapshot->_Animations[_AnimationIndex];
+    auto Duration = 0.0;
+    for (const auto& Frame : Animation._Frames)
+    {
+        Duration += Frame._DurationMilliseconds;
+    }
+    auto Position = 0.0;
+    auto Returning = false;
+    _State->TryGet_TimelineMilliseconds(Animation, Position);
+    _State->TryGet_TimelineReturning(Animation, Returning);
+    return FText::FromString(FString::Printf(TEXT("%.3f / %.3f s  •  %d / %d  •  %s"),
+        Position / 1000.0, Duration / 1000.0, _SelectedFrame + 1, Animation._Frames.Num(),
+        Returning ? TEXT("Returning") : TEXT("Forward")));
 }
 
 auto
@@ -2026,4 +1409,50 @@ auto
         : _State->_Comparison == ECk_PixelArtViewer_Comparison::Overlay ? TEXT("Overlay")
         : TEXT("Difference");
     return FText::FromString(Label);
+}
+
+auto
+    SCk_PixelArtViewer_Window::
+    Get_Timeline() const
+    -> TSharedPtr<SCk_PixelArtViewer_Timeline>
+{
+    return _Timeline;
+}
+
+auto
+    SCk_PixelArtViewer_Window::
+    Get_TimelineScroll() const
+    -> TSharedPtr<SScrollBox>
+{
+    return _TimelineScroll;
+}
+
+auto
+    SCk_PixelArtViewer_Window::
+    Get_TimelineZoom() const
+    -> double
+{
+    return _TimelineZoom;
+}
+
+auto
+    SCk_PixelArtViewer_Window::
+    Set_TimelineZoom(
+        double InZoom
+    )
+    -> bool
+{
+    if (NOT std::isfinite(InZoom) ||
+        (InZoom != 1.0 && InZoom != 2.0 && InZoom != 4.0 && InZoom != 8.0))
+    {
+        return false;
+    }
+    if (_TimelineScroll.IsValid() && _Timeline.IsValid() && _Timeline->Get_TrackWidth() > 0.0f)
+    {
+        const auto ViewWidth = _TimelineScroll->GetCachedGeometry().GetLocalSize().X;
+        _TimelineZoomAnchor = (_TimelineScroll->GetScrollOffset() + ViewWidth * 0.5)
+            / _Timeline->Get_TrackWidth();
+    }
+    _TimelineZoom = InZoom;
+    return true;
 }

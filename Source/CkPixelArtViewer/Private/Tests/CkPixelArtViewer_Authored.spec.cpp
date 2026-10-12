@@ -1,7 +1,8 @@
-#include "../../CkPixelArtViewer_Module.h"
+﻿#include "../../CkPixelArtViewer_Module.h"
 
 #include "CkPixelArtViewer/CkPixelArtViewer_Window.h"
 #include "CkPixelArtViewer/CkPixelArtViewer_Canvas.h"
+#include "CkPixelArtViewer/CkPixelArtViewer_Timeline.h"
 #include "CkPixelArtViewer/CkPixelArtViewer_Settings.h"
 #include "CkPixelSprite/CkPixelSprite_Asset.h"
 #include "CkPixelSpriteEditor/CkPixelSpriteEditor_AssetDefinition.h"
@@ -21,6 +22,9 @@
 #include "Misc/ScopeExit.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/IToolTip.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
@@ -68,6 +72,23 @@ namespace ck_pixel_art_viewer_authored_tests
     }
 
     auto
+        HasToolTipText(
+            const TSharedRef<SWidget>& InWidget,
+            const FString& InText
+        )
+        -> bool
+    {
+        const TSharedPtr<IToolTip> ToolTip = InWidget->GetToolTip();
+        if (NOT ToolTip.IsValid())
+        {
+            return false;
+        }
+        const auto Content = ToolTip->GetContentWidget();
+        Content->SlatePrepass();
+        return Content->GetAccessibleText().ToString().Equals(InText, ESearchCase::CaseSensitive);
+    }
+
+    auto
         FindButton(
             const TSharedRef<SWidget>& InRoot,
             const FString& InText
@@ -75,7 +96,8 @@ namespace ck_pixel_art_viewer_authored_tests
         -> TSharedPtr<SButton>
     {
         if (InRoot->GetTypeAsString() == TEXT("SButton")
-            && ContainsText(InRoot, InText))
+            && (ContainsText(InRoot, InText)
+                || HasToolTipText(InRoot, InText)))
         {
             return StaticCastSharedRef<SButton>(InRoot);
         }
@@ -89,6 +111,53 @@ namespace ck_pixel_art_viewer_authored_tests
             }
         }
         return {};
+    }
+
+    auto
+        FindComboButton(
+            const TSharedRef<SWidget>& InRoot,
+            const FString& InText
+        )
+        -> TSharedPtr<SComboButton>
+    {
+        if (InRoot->GetTypeAsString() == TEXT("SComboButton")
+            && (ContainsText(InRoot, InText)
+                || HasToolTipText(InRoot, InText)))
+        {
+            return StaticCastSharedRef<SComboButton>(InRoot);
+        }
+        const auto& Children = *InRoot->GetChildren();
+        for (auto Index = int32{0}; Index < Children.Num(); ++Index)
+        {
+            const auto Found = FindComboButton(ConstCastSharedRef<SWidget>(Children.GetChildAt(Index)), InText);
+            if (Found.IsValid())
+            {
+                return Found;
+            }
+        }
+        return {};
+    }
+
+    auto
+        FindMenuButtons(
+            const TSharedRef<SWidget>& InRoot,
+            const FString& InText,
+            TArray<TSharedRef<SWidget>>& OutButtons
+        )
+        -> void
+    {
+        const auto Type = InRoot->GetTypeAsString();
+        if ((Type == TEXT("SMenuEntryButton") || Type == TEXT("SButton"))
+            && ContainsText(InRoot, InText))
+        {
+            OutButtons.Add(InRoot);
+            return;
+        }
+        const auto& Children = *InRoot->GetChildren();
+        for (auto Index = int32{0}; Index < Children.Num(); ++Index)
+        {
+            FindMenuButtons(ConstCastSharedRef<SWidget>(Children.GetChildAt(Index)), InText, OutButtons);
+        }
     }
 
     auto
@@ -140,12 +209,13 @@ namespace ck_pixel_art_viewer_authored_tests
     auto
         Click(
             FSlateApplication& InSlate,
-            const TSharedRef<SWindow>& InWindow,
-            const TSharedRef<SButton>& InButton
+            const TSharedRef<SWindow>&,
+            const TSharedRef<SWidget>& InButton
         )
         -> bool
     {
-        if (NOT InWindow->GetNativeWindow().IsValid())
+        const auto ActualWindow = InSlate.FindWidgetWindow(InButton);
+        if (NOT ActualWindow.IsValid() || NOT ActualWindow->GetNativeWindow().IsValid())
         {
             return false;
         }
@@ -165,8 +235,10 @@ namespace ck_pixel_art_viewer_authored_tests
             Position, Position, NoButtons, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{}};
         InSlate.SetCursorPos(Position);
         InSlate.ProcessMouseMoveEvent(Move, true);
+        auto VisibleWindows = TArray<TSharedRef<SWindow>>{};
+        InSlate.GetAllVisibleWindowsOrdered(VisibleWindows);
         const auto Target = InSlate.LocateWindowUnderMouse(Position,
-            InSlate.GetInteractiveTopLevelWindows(), false, 0);
+            VisibleWindows, false, 0);
         auto Found = false;
         for (auto Index = 0; Index < Target.Widgets.Num(); ++Index)
         {
@@ -177,10 +249,72 @@ namespace ck_pixel_art_viewer_authored_tests
             return false;
         }
         const auto DownHandled = InSlate.ProcessMouseButtonDownEvent(
-            InWindow->GetNativeWindow(), Down);
+            ActualWindow->GetNativeWindow(), Down);
         const auto UpHandled = InSlate.ProcessMouseButtonUpEvent(Up);
         Tick(InSlate);
         return DownHandled && UpHandled;
+    }
+
+    auto
+        OpenMenu(
+            FSlateApplication& InSlate,
+            const TSharedRef<SWindow>& InHostWindow,
+            const TSharedRef<SComboButton>& InMenu
+        )
+        -> bool
+    {
+        const auto Clicked = Click(InSlate, InHostWindow, InMenu);
+        const auto Open = InMenu->IsOpen();
+        const auto Popup = InMenu->GetMenuWindow();
+        if (NOT Clicked || NOT Open || NOT Popup.IsValid())
+        {
+            UE_LOG(LogTemp, Error, TEXT("Pixel viewer combo did not open: clicked=%d open=%d popup=%d"),
+                Clicked, Open, Popup.IsValid());
+        }
+        return Clicked && Open && Popup.IsValid();
+    }
+
+    auto
+        ClickMenuButton(
+            FSlateApplication& InSlate,
+            const TSharedRef<SWindow>& InHostWindow,
+            const FString& InText
+        )
+        -> bool
+    {
+        auto Windows = TArray<TSharedRef<SWindow>>{};
+        InSlate.GetAllVisibleWindowsOrdered(Windows);
+        auto CandidateCount = int32{0};
+        auto SizedCount = int32{0};
+        for (const auto IncludeHost : {false, true})
+        {
+            for (const auto& Window : Windows)
+            {
+                if ((Window == InHostWindow) != IncludeHost)
+                {
+                    continue;
+                }
+                auto Buttons = TArray<TSharedRef<SWidget>>{};
+                FindMenuButtons(Window, InText, Buttons);
+                CandidateCount += Buttons.Num();
+                for (const auto& Button : Buttons)
+                {
+                    const auto Size = Button->GetCachedGeometry().GetLocalSize();
+                    if (Size.X <= 0.0 || Size.Y <= 0.0)
+                    {
+                        continue;
+                    }
+                    ++SizedCount;
+                    if (Click(InSlate, InHostWindow, Button))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        UE_LOG(LogTemp, Error, TEXT("Pixel viewer menu entry '%s' was not clicked: %d windows, %d matching buttons, %d with geometry"),
+            *InText, Windows.Num(), CandidateCount, SizedCount);
+        return false;
     }
 
     auto
@@ -220,6 +354,63 @@ namespace ck_pixel_art_viewer_authored_tests
         const auto UpHandled = InSlate.ProcessMouseButtonUpEvent(Up);
         Tick(InSlate);
         return DownHandled && Resized && UpHandled;
+    }
+
+    auto
+        Scrub_Timeline(
+            FSlateApplication& InSlate,
+            const TSharedRef<SCk_PixelArtViewer_Timeline>& InTimeline,
+            double InStartX,
+            double InEndX
+        )
+        -> bool
+    {
+        const auto Window = InSlate.FindWidgetWindow(InTimeline);
+        if (NOT Window.IsValid() || NOT Window->GetNativeWindow().IsValid())
+        {
+            return false;
+        }
+        const auto Geometry = InTimeline->GetCachedGeometry();
+        const auto Size = Geometry.GetLocalSize();
+        if (Size.X <= 0.0 || Size.Y <= 0.0 ||
+            InStartX < 0.0 || InStartX >= Size.X ||
+            InEndX < 0.0 || InEndX >= Size.X)
+        {
+            return false;
+        }
+        const auto Start = Geometry.LocalToAbsolute(FVector2D{InStartX, Size.Y * 0.5});
+        const auto End = Geometry.LocalToAbsolute(FVector2D{InEndX, Size.Y * 0.5});
+        const auto NoButtons = TSet<FKey>{};
+        const auto LeftButton = TSet<FKey>{EKeys::LeftMouseButton};
+        const auto Hover = FPointerEvent{0, FSlateApplication::CursorPointerIndex,
+            Start, Start, NoButtons, EKeys::Invalid, 0.0f, FModifierKeysState{}};
+        const auto Down = FPointerEvent{0, FSlateApplication::CursorPointerIndex,
+            Start, Start, LeftButton, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{}};
+        const auto Move = FPointerEvent{0, FSlateApplication::CursorPointerIndex,
+            End, Start, LeftButton, EKeys::Invalid, 0.0f, FModifierKeysState{}};
+        const auto Up = FPointerEvent{0, FSlateApplication::CursorPointerIndex,
+            End, End, NoButtons, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{}};
+        InSlate.SetCursorPos(Start);
+        InSlate.ProcessMouseMoveEvent(Hover, true);
+        auto VisibleWindows = TArray<TSharedRef<SWindow>>{};
+        InSlate.GetAllVisibleWindowsOrdered(VisibleWindows);
+        const auto Target = InSlate.LocateWindowUnderMouse(Start, VisibleWindows, false, 0);
+        auto Found = false;
+        for (auto Index = 0; Index < Target.Widgets.Num(); ++Index)
+        {
+            Found |= Target.Widgets[Index].Widget == InTimeline;
+        }
+        if (NOT Found)
+        {
+            return false;
+        }
+        const auto DownHandled = InSlate.ProcessMouseButtonDownEvent(
+            Window->GetNativeWindow(), Down);
+        InSlate.SetCursorPos(End);
+        InSlate.ProcessMouseMoveEvent(Move, false);
+        const auto UpHandled = InSlate.ProcessMouseButtonUpEvent(Up);
+        Tick(InSlate);
+        return DownHandled && UpHandled;
     }
 }
 
@@ -292,6 +483,7 @@ auto
     const auto OldLeftWeight = Preferences->_LeftPanelWeight;
     const auto OldCanvasWeight = Preferences->_CanvasPanelWeight;
     const auto OldRightWeight = Preferences->_RightPanelWeight;
+    const auto OldLayout = Preferences->_Layout;
     Preferences->_ShowGrid = true;
     Preferences->_ShowOnion = false;
     Preferences->_RenderMode = ECk_PixelSprite_RenderMode::Nearest;
@@ -299,6 +491,7 @@ auto
     Preferences->_LeftPanelWeight = std::numeric_limits<float>::quiet_NaN();
     Preferences->_CanvasPanelWeight = 0.0f;
     Preferences->_RightPanelWeight = 1.0f;
+    Preferences->_Layout = ECk_PixelArtViewer_Layout::Studio;
     ON_SCOPE_EXIT
     {
         Preferences->_ShowGrid = OldGrid;
@@ -319,6 +512,7 @@ auto
         Preferences->_LeftPanelWeight = OldLeftWeight;
         Preferences->_CanvasPanelWeight = OldCanvasWeight;
         Preferences->_RightPanelWeight = OldRightWeight;
+        Preferences->_Layout = OldLayout;
         Preferences->SaveConfig();
     };
     TSharedPtr<SWindow> HostWindow;
@@ -373,27 +567,32 @@ auto
     const auto InitialPrepared = Viewer->Get_Prepared();
     TestTrue(TEXT("Selected animation has prepared timing"), InitialPrepared.IsValid());
     const auto State = Viewer->Get_State();
-    const auto ZoomButton = FindButton(Viewer.ToSharedRef(), TEXT("4x"));
-    const auto GridButton = FindButton(Viewer.ToSharedRef(), TEXT("Grid on"));
-    TestTrue(TEXT("Mounted zoom control"), ZoomButton.IsValid());
-    TestTrue(TEXT("Mounted grid control"), GridButton.IsValid());
+    const auto ZoomMenu = FindComboButton(Viewer.ToSharedRef(), TEXT("Zoom"));
+    const auto ShowMenu = FindComboButton(Viewer.ToSharedRef(), TEXT("Show"));
+    TestTrue(TEXT("Mounted zoom menu"), ZoomMenu.IsValid());
+    TestTrue(TEXT("Mounted visibility menu"), ShowMenu.IsValid());
     TestTrue(TEXT("Mounted playback control"), FindButton(Viewer.ToSharedRef(), TEXT("Play / Pause")).IsValid());
-    TestTrue(TEXT("Mounted timeline and asset detail"), ContainsText(Viewer.ToSharedRef(), TEXT("Asset / animations"))
-        && ContainsText(Viewer.ToSharedRef(), TEXT("Frame timeline • click a thumbnail to scrub")));
-    TestTrue(TEXT("Advanced controls exist"), FindButton(Viewer.ToSharedRef(), TEXT("Onion off")).IsValid()
-        && FindButton(Viewer.ToSharedRef(), TEXT("Compare off")).IsValid()
-        && FindButton(Viewer.ToSharedRef(), TEXT("Export frame")).IsValid());
-    if (ZoomButton.IsValid())
+    TestTrue(TEXT("Mounted timeline and animation navigation"),
+        ContainsText(Viewer.ToSharedRef(), TEXT("Asset Browser"))
+        && ContainsText(Viewer.ToSharedRef(), TEXT("Timeline")));
+    TestTrue(TEXT("Advanced controls exist"), FindButton(Viewer.ToSharedRef(), TEXT("Onion skin")).IsValid()
+        && FindComboButton(Viewer.ToSharedRef(), TEXT("Comparison mode")).IsValid()
+        && FindComboButton(Viewer.ToSharedRef(), TEXT("Export")).IsValid());
+    if (ZoomMenu.IsValid())
     {
-        TestTrue(TEXT("Physical zoom button routes input"),
-            Click(Slate, HostWindow.ToSharedRef(), ZoomButton.ToSharedRef()));
-        TestEqual(TEXT("Zoom button changes production view"), State->_Zoom, 4.0);
+        TestTrue(TEXT("Physical zoom menu opens"),
+            OpenMenu(Slate, HostWindow.ToSharedRef(), ZoomMenu.ToSharedRef()));
+        TestTrue(TEXT("Physical 4x menu option routes input"),
+            ClickMenuButton(Slate, HostWindow.ToSharedRef(), TEXT("4x")));
+        TestEqual(TEXT("Zoom menu changes production view"), State->_Zoom, 4.0);
     }
-    if (GridButton.IsValid())
+    if (ShowMenu.IsValid())
     {
-        TestTrue(TEXT("Physical grid button routes input"),
-            Click(Slate, HostWindow.ToSharedRef(), GridButton.ToSharedRef()));
-        TestFalse(TEXT("Grid button changes production view"), State->_ShowGrid);
+        TestTrue(TEXT("Physical visibility menu opens"),
+            OpenMenu(Slate, HostWindow.ToSharedRef(), ShowMenu.ToSharedRef()));
+        TestTrue(TEXT("Physical grid menu option routes input"),
+            ClickMenuButton(Slate, HostWindow.ToSharedRef(), TEXT("Grid")));
+        TestFalse(TEXT("Grid menu changes production view"), State->_ShowGrid);
     }
     TestTrue(TEXT("Pan changes production view"), State->Pan_By(FVector2D{48.0, 24.0}));
     State->_ShowGrid = true;
@@ -404,23 +603,28 @@ auto
     TestEqual(TEXT("Timeline seeks to second authored idle frame"), Viewer->Get_SelectedFrame(), 1);
     TestTrue(TEXT("Return to first authored frame"), Viewer->Seek_Milliseconds(0.0));
     TestTrue(TEXT("Seek and tick reuse prepared timing"), Viewer->Get_Prepared() == InitialPrepared);
-    if (const auto OnionButton = FindButton(Viewer.ToSharedRef(), TEXT("Onion off")))
+    if (const auto OnionButton = FindButton(Viewer.ToSharedRef(), TEXT("Onion skin")))
     {
         TestTrue(TEXT("Physical onion toggle routes input"), Click(Slate, HostWindow.ToSharedRef(), OnionButton.ToSharedRef()));
     }
-    if (const auto CompareButton = FindButton(Viewer.ToSharedRef(), TEXT("Compare off")))
+    if (const auto CompareMenu = FindComboButton(Viewer.ToSharedRef(), TEXT("Comparison mode")))
     {
-        TestTrue(TEXT("Physical comparison toggle routes input"), Click(Slate, HostWindow.ToSharedRef(), CompareButton.ToSharedRef()));
+        TestTrue(TEXT("Physical comparison menu opens"),
+            OpenMenu(Slate, HostWindow.ToSharedRef(), CompareMenu.ToSharedRef()));
+        TestTrue(TEXT("Physical side-by-side comparison option routes input"),
+            ClickMenuButton(Slate, HostWindow.ToSharedRef(), TEXT("Side by side")));
     }
     TestTrue(TEXT("Character comparison counts changed source pixels"),
         Viewer->Get_ChangedPixels() > 0);
     const auto Canvas = Viewer->Get_Canvas();
     TestTrue(TEXT("Set zoom before centering"), State->Set_Zoom(4.0));
     TestTrue(TEXT("Pan before centering"), State->Pan_By(FVector2D{35.0, -20.0}));
-    if (const auto CenterButton = FindButton(Viewer.ToSharedRef(), TEXT("Center")))
+    if (const auto CenterMenu = FindComboButton(Viewer.ToSharedRef(), TEXT("Zoom")))
     {
-        TestTrue(TEXT("Physical Center control routes input"),
-            Click(Slate, HostWindow.ToSharedRef(), CenterButton.ToSharedRef()));
+        TestTrue(TEXT("Physical Zoom menu opens for Center"),
+            OpenMenu(Slate, HostWindow.ToSharedRef(), CenterMenu.ToSharedRef()));
+        TestTrue(TEXT("Physical Center menu option routes input"),
+            ClickMenuButton(Slate, HostWindow.ToSharedRef(), TEXT("Center")));
         const auto CenterSize = Canvas->GetCachedGeometry().GetLocalSize();
         const auto ExpectedPan = (CenterSize - FVector2D{16.0 * 4.0 * 2.0 + 24.0,
             16.0 * 4.0}) * 0.5;
@@ -436,12 +640,14 @@ auto
     }
     else
     {
-        TestTrue(TEXT("Center control exists"), false);
+        TestTrue(TEXT("Center menu exists"), false);
     }
-    if (const auto ResetButton = FindButton(Viewer.ToSharedRef(), TEXT("Reset view")))
+    if (const auto ResetMenu = FindComboButton(Viewer.ToSharedRef(), TEXT("Zoom")))
     {
-        TestTrue(TEXT("Physical Reset control routes input"),
-            Click(Slate, HostWindow.ToSharedRef(), ResetButton.ToSharedRef()));
+        TestTrue(TEXT("Physical Zoom menu opens for Reset"),
+            OpenMenu(Slate, HostWindow.ToSharedRef(), ResetMenu.ToSharedRef()));
+        TestTrue(TEXT("Physical Reset menu option routes input"),
+            ClickMenuButton(Slate, HostWindow.ToSharedRef(), TEXT("Reset view")));
         TestTrue(TEXT("Reset restores default zoom and pan"),
             State->_Zoom == 16.0 && State->_Pan.IsNearlyZero());
     }
@@ -516,10 +722,12 @@ auto
         }
     }
     AddInfo(FString::Printf(TEXT("Pixel viewer clipping screenshot: %s"), *ClipOutput));
-    if (const auto PlaybackButton = FindButton(Viewer.ToSharedRef(), TEXT("Loop")))
+    if (const auto PlaybackMenu = FindComboButton(Viewer.ToSharedRef(), TEXT("Playback mode")))
     {
-        TestTrue(TEXT("Physical playback control changes prepared mode"),
-            Click(Slate, HostWindow.ToSharedRef(), PlaybackButton.ToSharedRef()));
+        TestTrue(TEXT("Physical playback menu opens"),
+            OpenMenu(Slate, HostWindow.ToSharedRef(), PlaybackMenu.ToSharedRef()));
+        TestTrue(TEXT("Physical Once option changes prepared mode"),
+            ClickMenuButton(Slate, HostWindow.ToSharedRef(), TEXT("Once")));
         TestTrue(TEXT("Playback mode receives fresh prepared timing"),
             Viewer->Get_Prepared().IsValid() && Viewer->Get_Prepared() != InitialPrepared);
     }
@@ -562,6 +770,13 @@ auto
                 Asset->Request_ReplaceManifest(Hierarchical, HierarchyDiagnostic)))
             {
                 Tick(Slate);
+                const auto SourcesTab = FindButton(Viewer.ToSharedRef(), TEXT("Sources"));
+                TestTrue(TEXT("Mounted source tab exists"), SourcesTab.IsValid());
+                if (SourcesTab.IsValid())
+                {
+                    TestTrue(TEXT("Physical source tab opens source navigation"),
+                        Click(Slate, HostWindow.ToSharedRef(), SourcesTab.ToSharedRef()));
+                }
                 const auto SourceTree = FindTreeView(Viewer.ToSharedRef());
                 TestTrue(TEXT("Mounted source tree is available for navigation"),
                     SourceTree.IsValid());
@@ -648,6 +863,485 @@ auto
     }
     Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
     HostWindow.Reset();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkPixelArtViewer_LayoutSwitch,
+    "Ck.PixelArtViewer.LayoutSwitch",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
+
+auto
+    FCkPixelArtViewer_LayoutSwitch::
+    RunTest(
+        const FString&
+    )
+    -> bool
+{
+    using namespace ck_pixel_art_viewer_authored_tests;
+
+    if (NOT TestTrue(TEXT("Slate is initialized"), FSlateApplication::IsInitialized()))
+    {
+        return false;
+    }
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkFoundation"));
+    if (NOT TestTrue(TEXT("Character fixture plugin exists"), Plugin.IsValid()))
+    {
+        return false;
+    }
+    const auto Fixture = Plugin->GetBaseDir() / TEXT("Tools/CkPixel/Examples/Character/character.json");
+    auto Factory = TStrongObjectPtr<UCk_PixelSpriteFactory_UE>{NewObject<UCk_PixelSpriteFactory_UE>()};
+    auto Canceled = false;
+    auto Asset = TStrongObjectPtr<UCk_PixelSpriteAsset_UE>{
+        Cast<UCk_PixelSpriteAsset_UE>(Factory->FactoryCreateFile(
+            UCk_PixelSpriteAsset_UE::StaticClass(), GetTransientPackage(),
+            MakeUniqueObjectName(GetTransientPackage(), UCk_PixelSpriteAsset_UE::StaticClass()),
+            RF_Transient, Fixture, nullptr, GWarn, Canceled))};
+    if (NOT TestTrue(TEXT("Character imports through production factory"), Asset.IsValid()))
+    {
+        return false;
+    }
+
+    auto Preferences = TObjectPtr<UCkPixelArtViewerSettings>{
+        GetMutableDefault<UCkPixelArtViewerSettings>()};
+    const auto OldLayout = Preferences->_Layout;
+    Preferences->_Layout = ECk_PixelArtViewer_Layout::Studio;
+    ON_SCOPE_EXIT
+    {
+        Preferences->_Layout = OldLayout;
+        Preferences->SaveConfig();
+    };
+
+    auto& Slate = FSlateApplication::Get();
+    auto Viewer = SNew(SCk_PixelArtViewer_Window);
+    auto HostWindow = SNew(SWindow)
+        .ClientSize(FVector2D{1280.0f, 800.0f})
+        .CreateTitleBar(false)
+        .HasCloseButton(false)
+        [Viewer];
+    ON_SCOPE_EXIT
+    {
+        Slate.DestroyWindowImmediately(HostWindow);
+    };
+    Slate.AddWindow(HostWindow, true);
+    Tick(Slate);
+    if (NOT TestTrue(TEXT("Mounted Studio viewer accepts Character"), Viewer->Set_Asset(*Asset)))
+    {
+        return false;
+    }
+    TestTrue(TEXT("Seek second authored frame"), Viewer->Seek_Milliseconds(250.0));
+    Tick(Slate);
+    TestEqual(TEXT("Studio frame before switch"), Viewer->Get_SelectedFrame(), 1);
+    TestEqual(TEXT("Studio layout starts from isolated preference"),
+        Viewer->Get_Layout(), ECk_PixelArtViewer_Layout::Studio);
+    const auto State = Viewer->Get_State();
+    const auto Prepared = Viewer->Get_Prepared();
+    const auto Resources = Viewer->Get_Resources();
+    if (NOT TestTrue(TEXT("Studio keeps state and prepared frame resources"),
+        State.IsValid() && Prepared.IsValid() && static_cast<bool>(Resources)))
+    {
+        return false;
+    }
+    TestTrue(TEXT("Studio canvas fits before capture"), Viewer->Get_Canvas()->Fit_View());
+    Tick(Slate);
+    auto Pixels = TArray<FColor>{};
+    auto Size = FIntVector::ZeroValue;
+    const auto StudioOutput = FPaths::Combine(FPaths::ProjectSavedDir(),
+        TEXT("PixelSpriteAcceptance/Viewer-Studio.png"));
+    TestTrue(TEXT("Studio captures the mounted Slate renderer"),
+        Capture(Slate, Viewer, StudioOutput, Pixels, Size));
+    AddInfo(FString::Printf(TEXT("Studio viewer screenshot: %s"), *StudioOutput));
+
+    const auto LayoutMenu = FindComboButton(Viewer, TEXT("Viewer layout"));
+    if (TestTrue(TEXT("Mounted layout menu exists"), LayoutMenu.IsValid()))
+    {
+        TestTrue(TEXT("Physical layout menu opens"),
+            OpenMenu(Slate, HostWindow, LayoutMenu.ToSharedRef()));
+        TestTrue(TEXT("Physical Focused menu item switches layout"),
+            ClickMenuButton(Slate, HostWindow, TEXT("Focused")));
+    }
+    TestEqual(TEXT("Focused layout selected"),
+        Viewer->Get_Layout(), ECk_PixelArtViewer_Layout::Focused);
+    TestEqual(TEXT("Focused preference persists"),
+        Preferences->_Layout, ECk_PixelArtViewer_Layout::Focused);
+    TestTrue(TEXT("Focused switch keeps state and immutable resources"),
+        Viewer->Get_State() == State && Viewer->Get_Prepared() == Prepared
+        && Viewer->Get_Resources() == Resources && Viewer->Get_Asset() == Asset.Get());
+    TestEqual(TEXT("Focused switch keeps paused time"), State->_TimeMilliseconds, 250.0);
+    TestFalse(TEXT("Focused switch remains paused"), State->_Playing);
+    TestEqual(TEXT("Focused switch keeps authored frame"), Viewer->Get_SelectedFrame(), 1);
+    TestTrue(TEXT("Focused workspace starts with only the canvas"),
+        Viewer->Get_MainSplitter().IsValid()
+        && Viewer->Get_MainSplitter()->GetChildren()->Num() == 1);
+    if (const auto InspectorButton = FindButton(Viewer, TEXT("Inspector")))
+    {
+        TestTrue(TEXT("Physical Inspector control opens a second panel"),
+            Click(Slate, HostWindow, InspectorButton.ToSharedRef())
+            && Viewer->Get_MainSplitter()->GetChildren()->Num() == 2);
+        TestTrue(TEXT("Inspector toggle keeps presentation state"),
+            Viewer->Get_State() == State && Viewer->Get_Prepared() == Prepared
+            && State->_TimeMilliseconds == 250.0 && Viewer->Get_SelectedFrame() == 1);
+        TestTrue(TEXT("Physical Inspector control restores canvas focus"),
+            Click(Slate, HostWindow, InspectorButton.ToSharedRef())
+            && Viewer->Get_MainSplitter()->GetChildren()->Num() == 1);
+    }
+    else
+    {
+        TestTrue(TEXT("Mounted Inspector control exists"), false);
+    }
+    TestTrue(TEXT("Focused canvas fits before capture"), Viewer->Get_Canvas()->Fit_View());
+    Tick(Slate);
+    const auto FocusedOutput = FPaths::Combine(FPaths::ProjectSavedDir(),
+        TEXT("PixelSpriteAcceptance/Viewer-Focused.png"));
+    TestTrue(TEXT("Focused captures the mounted Slate renderer"),
+        Capture(Slate, Viewer, FocusedOutput, Pixels, Size));
+    AddInfo(FString::Printf(TEXT("Focused viewer screenshot: %s"), *FocusedOutput));
+
+    const auto StudioMenu = FindComboButton(Viewer, TEXT("Viewer layout"));
+    if (TestTrue(TEXT("Studio layout menu survives rebuild"), StudioMenu.IsValid()))
+    {
+        TestTrue(TEXT("Physical Studio layout menu opens"),
+            OpenMenu(Slate, HostWindow, StudioMenu.ToSharedRef()));
+        TestTrue(TEXT("Physical Studio menu item switches layout"),
+            ClickMenuButton(Slate, HostWindow, TEXT("Studio")));
+    }
+    TestEqual(TEXT("Studio layout restored"),
+        Viewer->Get_Layout(), ECk_PixelArtViewer_Layout::Studio);
+    TestTrue(TEXT("Studio return restores three resizable panels"),
+        Viewer->Get_MainSplitter().IsValid()
+        && Viewer->Get_MainSplitter()->GetChildren()->Num() == 3);
+    TestTrue(TEXT("Studio return keeps state and immutable resources"),
+        Viewer->Get_State() == State && Viewer->Get_Prepared() == Prepared
+        && Viewer->Get_Resources() == Resources);
+    TestEqual(TEXT("Studio return keeps paused time"), State->_TimeMilliseconds, 250.0);
+    TestFalse(TEXT("Studio return remains paused"), State->_Playing);
+    TestEqual(TEXT("Studio return keeps authored frame"), Viewer->Get_SelectedFrame(), 1);
+
+    State->_Playing = true;
+    Viewer->Set_Layout(ECk_PixelArtViewer_Layout::Focused);
+    TestEqual(TEXT("Programmatic switch selects Focused"),
+        Viewer->Get_Layout(), ECk_PixelArtViewer_Layout::Focused);
+    TestEqual(TEXT("Programmatic Focused switch retains playback time"),
+        State->_TimeMilliseconds, 250.0);
+    TestTrue(TEXT("Programmatic Focused switch retains play state"), State->_Playing);
+    TestEqual(TEXT("Programmatic Focused switch retains frame"), Viewer->Get_SelectedFrame(), 1);
+    TestTrue(TEXT("Programmatic Focused switch retains state and timing"),
+        Viewer->Get_State() == State && Viewer->Get_Prepared() == Prepared);
+    State->_Playing = false;
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkPixelArtViewer_Sproutling,
+    "Ck.PixelArtViewer.SproutlingExample",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
+
+auto
+    FCkPixelArtViewer_Sproutling::
+    RunTest(
+        const FString&
+    )
+    -> bool
+{
+    using namespace ck_pixel_art_viewer_authored_tests;
+    if (NOT TestTrue(TEXT("Slate is initialized"), FSlateApplication::IsInitialized()))
+    {
+        return false;
+    }
+    auto Asset = TStrongObjectPtr<UCk_PixelSpriteAsset_UE>{
+        LoadObject<UCk_PixelSpriteAsset_UE>(nullptr,
+            TEXT("/Game/PixelSpriteExamples/Sproutling.Sproutling"))};
+    if (NOT TestTrue(TEXT("Native Sproutling example loads"), Asset.IsValid()))
+    {
+        return false;
+    }
+    auto Preferences = TObjectPtr<UCkPixelArtViewerSettings>{
+        GetMutableDefault<UCkPixelArtViewerSettings>()};
+    const auto OldLayout = Preferences->_Layout;
+    Preferences->_Layout = ECk_PixelArtViewer_Layout::Studio;
+    ON_SCOPE_EXIT
+    {
+        Preferences->_Layout = OldLayout;
+        Preferences->SaveConfig();
+    };
+    auto& Slate = FSlateApplication::Get();
+    auto Viewer = SNew(SCk_PixelArtViewer_Window);
+    const auto State = Viewer->Get_State();
+    *State = FCk_PixelArtViewer_State{};
+    auto HostWindow = SNew(SWindow)
+        .ClientSize(FVector2D{1280.0f, 800.0f})
+        .CreateTitleBar(false)
+        .HasCloseButton(false)
+        [Viewer];
+    ON_SCOPE_EXIT
+    {
+        Slate.DestroyWindowImmediately(HostWindow);
+    };
+    Slate.AddWindow(HostWindow, true);
+    Tick(Slate);
+    if (NOT TestTrue(TEXT("Viewer accepts native eight-frame creature"), Viewer->Set_Asset(*Asset)))
+    {
+        return false;
+    }
+    Tick(Slate);
+    TestTrue(TEXT("Creature fits the real canvas"), Viewer->Get_Canvas()->Fit_View());
+    TestTrue(TEXT("Rest pose is selectable"), Viewer->Seek_Milliseconds(0.0));
+    TestEqual(TEXT("Rest frame"), Viewer->Get_SelectedFrame(), 0);
+    TestTrue(TEXT("Raised breath pose is selectable"), Viewer->Seek_Milliseconds(670.0));
+    TestEqual(TEXT("Full breath frame"), Viewer->Get_SelectedFrame(), 2);
+    if (const auto Next = FindButton(Viewer, TEXT("Next frame")))
+    {
+        TestTrue(TEXT("Creature steps through the mounted transport"), Click(Slate, HostWindow, Next.ToSharedRef()));
+        TestEqual(TEXT("Half-blink frame follows full breath"), Viewer->Get_SelectedFrame(), 3);
+    }
+    else
+    {
+        TestTrue(TEXT("Mounted next-frame transport exists"), false);
+    }
+    TestTrue(TEXT("Blink pose is selectable"), Viewer->Seek_Milliseconds(980.0));
+    TestEqual(TEXT("Closed-eye blink frame"), Viewer->Get_SelectedFrame(), 4);
+    TestTrue(TEXT("Return to rest for presentation"), Viewer->Seek_Milliseconds(0.0));
+    Tick(Slate);
+    auto Pixels = TArray<FColor>{};
+    auto Size = FIntVector::ZeroValue;
+    const auto Output = FPaths::Combine(FPaths::ProjectSavedDir(),
+        TEXT("PixelSpriteAcceptance/Sproutling/Viewer-Sproutling.png"));
+    TestTrue(TEXT("Native creature captures the real Slate renderer"), Capture(Slate, Viewer, Output, Pixels, Size));
+    AddInfo(FString::Printf(TEXT("Sproutling native viewer screenshot: %s"), *Output));
+    Viewer->Set_Layout(ECk_PixelArtViewer_Layout::Focused);
+    TestEqual(TEXT("Sproutling Focused layout selected"),
+        Viewer->Get_Layout(), ECk_PixelArtViewer_Layout::Focused);
+    Tick(Slate);
+    TestTrue(TEXT("Sproutling fits the Focused canvas"), Viewer->Get_Canvas()->Fit_View());
+    Tick(Slate);
+    const auto FocusedOutput = FPaths::Combine(FPaths::ProjectSavedDir(),
+        TEXT("PixelSpriteAcceptance/Sproutling/Viewer-Sproutling-Focused.png"));
+    TestTrue(TEXT("Focused creature captures the real Slate renderer"),
+        Capture(Slate, Viewer, FocusedOutput, Pixels, Size));
+    AddInfo(FString::Printf(TEXT("Sproutling Focused viewer screenshot: %s"), *FocusedOutput));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkPixelArtViewer_TimeTrack,
+    "Ck.PixelArtViewer.TimeTrack",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
+
+auto
+    FCkPixelArtViewer_TimeTrack::
+    RunTest(
+        const FString&
+    )
+    -> bool
+{
+    using namespace ck_pixel_art_viewer_authored_tests;
+    if (NOT TestTrue(TEXT("Slate is initialized"), FSlateApplication::IsInitialized()))
+    {
+        return false;
+    }
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkFoundation"));
+    if (NOT TestTrue(TEXT("Sproutling fixture plugin exists"), Plugin.IsValid()))
+    {
+        return false;
+    }
+    const auto Fixture = Plugin->GetBaseDir() /
+        TEXT("Tools/CkPixel/Examples/Sproutling/sproutling.json");
+    auto Factory = TStrongObjectPtr<UCk_PixelSpriteFactory_UE>{NewObject<UCk_PixelSpriteFactory_UE>()};
+    auto Canceled = false;
+    auto Asset = TStrongObjectPtr<UCk_PixelSpriteAsset_UE>{
+        Cast<UCk_PixelSpriteAsset_UE>(Factory->FactoryCreateFile(
+            UCk_PixelSpriteAsset_UE::StaticClass(), GetTransientPackage(),
+            MakeUniqueObjectName(GetTransientPackage(), UCk_PixelSpriteAsset_UE::StaticClass()),
+            RF_Transient, Fixture, nullptr, GWarn, Canceled))};
+    if (NOT TestTrue(TEXT("Production factory imports authored Sproutling"), Asset.IsValid()))
+    {
+        return false;
+    }
+    const auto Snapshot = Asset->Get_Snapshot();
+    if (NOT TestTrue(TEXT("Imported Sproutling has its idle animation"),
+        Snapshot.IsValid() && Snapshot->_Animations.Num() == 1 &&
+        Snapshot->_Animations[0]._Frames.Num() == 8))
+    {
+        return false;
+    }
+    const auto& Animation = Snapshot->_Animations[0];
+    const auto Durations = TArray<double>{450.0, 220.0, 220.0, 90.0,
+        110.0, 220.0, 220.0, 450.0};
+    for (auto Index = int32{0}; Index < Durations.Num(); ++Index)
+    {
+        TestEqual(FString::Printf(TEXT("Imported frame %d keeps its authored duration"), Index + 1),
+            Animation._Frames[Index]._DurationMilliseconds, Durations[Index]);
+    }
+
+    auto Preferences = TObjectPtr<UCkPixelArtViewerSettings>{
+        GetMutableDefault<UCkPixelArtViewerSettings>()};
+    const auto OldLayout = Preferences->_Layout;
+    Preferences->_Layout = ECk_PixelArtViewer_Layout::Studio;
+    ON_SCOPE_EXIT
+    {
+        Preferences->_Layout = OldLayout;
+        Preferences->SaveConfig();
+    };
+    auto& Slate = FSlateApplication::Get();
+    auto Viewer = SNew(SCk_PixelArtViewer_Window);
+    const auto State = Viewer->Get_State();
+    *State = FCk_PixelArtViewer_State{};
+    auto HostWindow = SNew(SWindow)
+        .ClientSize(FVector2D{1280.0f, 800.0f})
+        .CreateTitleBar(false)
+        .HasCloseButton(false)
+        [Viewer];
+    ON_SCOPE_EXIT
+    {
+        Slate.DestroyWindowImmediately(HostWindow);
+    };
+    Slate.AddWindow(HostWindow, true);
+    Tick(Slate);
+    if (NOT TestTrue(TEXT("Mounted viewer accepts imported Sproutling"), Viewer->Set_Asset(*Asset)))
+    {
+        return false;
+    }
+    Tick(Slate);
+    TestTrue(TEXT("Sproutling fits the canvas for timeline captures"),
+        Viewer->Get_Canvas()->Fit_View());
+    Tick(Slate);
+    const auto Timeline = Viewer->Get_Timeline();
+    const auto Scroll = Viewer->Get_TimelineScroll();
+    if (NOT TestTrue(TEXT("Native time track and horizontal viewport are mounted"),
+        Timeline.IsValid() && Scroll.IsValid()))
+    {
+        return false;
+    }
+    TestTrue(TEXT("Fit timeline zoom is selected"), FMath::IsNearlyEqual(Viewer->Get_TimelineZoom(), 1.0));
+    const auto ViewportWidth = Scroll->GetCachedGeometry().GetLocalSize().X;
+    const auto FitWidth = Timeline->Get_TrackWidth();
+    TestTrue(TEXT("Fit track fills a measurable viewport without horizontal clipping"),
+        ViewportWidth > 0.0 && FitWidth > 0.0 && FitWidth <= ViewportWidth + 2.0);
+    TestTrue(TEXT("Frame blocks preserve the 450 to 90 millisecond ratio"),
+        FMath::IsNearlyEqual(Timeline->Get_FrameWidth(0) /
+            Timeline->Get_FrameWidth(3), 5.0f, 0.05f));
+    TestTrue(TEXT("Authored short block is narrower than its fixed thumbnail"),
+        Timeline->Get_FrameWidth(3) < 56.0f);
+    TestTrue(TEXT("Timeline thumbnails keep a fixed 56 pixel square"),
+        Timeline->Get_ThumbnailSize().Equals(FVector2D{56.0, 56.0}, 0.01));
+    auto Pixels = TArray<FColor>{};
+    auto Size = FIntVector::ZeroValue;
+    const auto FitOutput = FPaths::Combine(FPaths::ProjectSavedDir(),
+        TEXT("PixelSpriteAcceptance/Sproutling-TimeTrack-Fit.png"));
+    TestTrue(TEXT("Fit time track captures the mounted renderer"),
+        Capture(Slate, Viewer, FitOutput, Pixels, Size));
+    AddInfo(FString::Printf(TEXT("Sproutling fit time track screenshot: %s"), *FitOutput));
+
+    const auto CanvasZoom = State->_Zoom;
+    TestFalse(TEXT("Unsupported timeline zoom is rejected"), Viewer->Set_TimelineZoom(3.0));
+    TestFalse(TEXT("Non-finite timeline zoom is rejected"),
+        Viewer->Set_TimelineZoom(std::numeric_limits<double>::quiet_NaN()));
+    TestTrue(TEXT("Unsupported zoom leaves fitted track unchanged"),
+        FMath::IsNearlyEqual(Viewer->Get_TimelineZoom(), 1.0));
+    TestTrue(TEXT("Two times timeline zoom is accepted"), Viewer->Set_TimelineZoom(2.0));
+    TestTrue(TEXT("Four times timeline zoom is accepted"), Viewer->Set_TimelineZoom(4.0));
+    if (const auto ZoomMenu = FindComboButton(Viewer, TEXT("Timeline zoom")))
+    {
+        TestTrue(TEXT("Physical timeline zoom menu opens"),
+            OpenMenu(Slate, HostWindow, ZoomMenu.ToSharedRef()));
+        TestTrue(TEXT("Physical eight times timeline zoom option routes input"),
+            ClickMenuButton(Slate, HostWindow, TEXT("Timeline 8x")));
+    }
+    else
+    {
+        TestTrue(TEXT("Mounted timeline zoom menu exists"), false);
+    }
+    Tick(Slate);
+    TestTrue(TEXT("Eight times zoom expands the full authored track"),
+        FMath::IsNearlyEqual(Viewer->Get_TimelineZoom(), 8.0) &&
+        Timeline->Get_TrackWidth() > ViewportWidth * 2.0 &&
+        FMath::IsNearlyEqual(Timeline->Get_FrameWidth(0) /
+            Timeline->Get_FrameWidth(3), 5.0f, 0.05f));
+    TestTrue(TEXT("Eight times zoom reveals the full fixed thumbnail in the shortest frame"),
+        Timeline->Get_FrameWidth(3) >= Timeline->Get_ThumbnailSize().X + 4.0);
+    TestTrue(TEXT("Timeline zoom does not change canvas zoom"),
+        FMath::IsNearlyEqual(State->_Zoom, CanvasZoom));
+    const auto ZoomOutput = FPaths::Combine(FPaths::ProjectSavedDir(),
+        TEXT("PixelSpriteAcceptance/Sproutling-TimeTrack-Zoom.png"));
+    TestTrue(TEXT("Zoomed time track captures the mounted renderer"),
+        Capture(Slate, Viewer, ZoomOutput, Pixels, Size));
+    AddInfo(FString::Printf(TEXT("Sproutling zoomed time track screenshot: %s"), *ZoomOutput));
+    Scroll->SetScrollOffset(Timeline->Get_TrackWidth());
+    Tick(Slate);
+    TestTrue(TEXT("Eight times zoom allows physical horizontal scrolling to the final frame"),
+        Scroll->GetScrollOffset() > 0.0f &&
+        Scroll->GetScrollOffset() + Scroll->GetCachedGeometry().GetLocalSize().X >=
+            Timeline->Get_TrackWidth() - 2.0f);
+    Viewer->Set_Layout(ECk_PixelArtViewer_Layout::Focused);
+    Tick(Slate);
+    TestTrue(TEXT("Focused layout retains timeline zoom and canvas zoom"),
+        FMath::IsNearlyEqual(Viewer->Get_TimelineZoom(), 8.0) &&
+        FMath::IsNearlyEqual(State->_Zoom, CanvasZoom));
+    Viewer->Set_Layout(ECk_PixelArtViewer_Layout::Studio);
+    Tick(Slate);
+    TestTrue(TEXT("Studio layout return retains timeline zoom and canvas zoom"),
+        FMath::IsNearlyEqual(Viewer->Get_TimelineZoom(), 8.0) &&
+        FMath::IsNearlyEqual(State->_Zoom, CanvasZoom));
+
+    TestTrue(TEXT("Return to fitted timeline for physical scrubbing"), Viewer->Set_TimelineZoom(1.0));
+    Scroll->SetScrollOffset(0.0f);
+    Tick(Slate);
+    const auto SecondFrameX = Timeline->Get_FrameWidth(0) +
+        Timeline->Get_FrameWidth(1) * 0.5;
+    TestTrue(TEXT("Physical time-track click selects the second authored frame"),
+        Scrub_Timeline(Slate, Timeline.ToSharedRef(), SecondFrameX, SecondFrameX));
+    TestEqual(TEXT("Click selects frame two"), Viewer->Get_SelectedFrame(), 1);
+    TestTrue(TEXT("Click maps track position to authored milliseconds"),
+        FMath::IsNearlyEqual(State->_TimeMilliseconds, 560.0, 4.0));
+    const auto LastFrameX = Timeline->Get_TrackWidth() -
+        Timeline->Get_FrameWidth(7) * 0.5;
+    TestTrue(TEXT("Physical drag scrubs across the mounted time track"),
+        Scrub_Timeline(Slate, Timeline.ToSharedRef(),
+            Timeline->Get_FrameWidth(0) * 0.25, LastFrameX));
+    TestEqual(TEXT("Drag selects the final authored frame"), Viewer->Get_SelectedFrame(), 7);
+    TestTrue(TEXT("Drag maps to a point inside the last authored duration"),
+        State->_TimeMilliseconds > 1530.0 && State->_TimeMilliseconds < 1980.0);
+
+    State->_Playback = ECk_PixelSprite_Playback::Loop;
+    TestTrue(TEXT("Loop playback seeks beyond one forward cycle"), Viewer->Seek_Milliseconds(2060.0));
+    Tick(Slate);
+    auto Playhead = 0.0;
+    TestTrue(TEXT("Loop timeline mapping succeeds"),
+        State->TryGet_TimelineMilliseconds(Animation, Playhead));
+    TestTrue(TEXT("2060 milliseconds wraps to 80 on the visible track"),
+        FMath::IsNearlyEqual(Playhead, 80.0, 0.01) &&
+        FMath::IsNearlyEqual(Timeline->Get_PlayheadMilliseconds(), 80.0, 0.01));
+    State->_Playback = ECk_PixelSprite_Playback::PingPong;
+    TestTrue(TEXT("Ping-pong playback seeks into its return leg"), Viewer->Seek_Milliseconds(2000.0));
+    Tick(Slate);
+    auto Returning = false;
+    auto ReturnAt2000 = 0.0;
+    TestTrue(TEXT("First return position maps onto the authored track"),
+        State->TryGet_TimelineReturning(Animation, Returning) && Returning &&
+        State->TryGet_TimelineMilliseconds(Animation, ReturnAt2000) &&
+        FMath::IsNearlyEqual(Timeline->Get_PlayheadMilliseconds(), ReturnAt2000, 0.01));
+    TestTrue(TEXT("Ping-pong playback seeks further along the return leg"),
+        Viewer->Seek_Milliseconds(2100.0));
+    Tick(Slate);
+    auto ReturnAt2100 = 0.0;
+    TestTrue(TEXT("Returning playhead moves left as absolute time increases"),
+        State->TryGet_TimelineReturning(Animation, Returning) && Returning &&
+        State->TryGet_TimelineMilliseconds(Animation, ReturnAt2100) &&
+        ReturnAt2100 < ReturnAt2000 &&
+        FMath::IsNearlyEqual(Timeline->Get_PlayheadMilliseconds(), ReturnAt2100, 0.01));
+
+    const auto OriginalTrackWidth = Timeline->Get_TrackWidth();
+    const auto OriginalLastFrameWidth = Timeline->Get_FrameWidth(7);
+    auto CandidateFrames = TArray<FCk_PixelArtViewer_TimelineFrame>{};
+    auto CandidateFrame = FCk_PixelArtViewer_TimelineFrame{};
+    CandidateFrame._DurationMilliseconds = 100.0;
+    CandidateFrames.Add(CandidateFrame);
+    CandidateFrame._DurationMilliseconds = std::numeric_limits<double>::quiet_NaN();
+    CandidateFrames.Add(CandidateFrame);
+    AddExpectedError(TEXT("Pixel art timeline frame has invalid duration"),
+        EAutomationExpectedErrorFlags::Contains, 2);
+    TestFalse(TEXT("Malformed later duration rejects the whole timeline candidate"),
+        Timeline->Set_Frames(MoveTemp(CandidateFrames)));
+    TestTrue(TEXT("Rejected candidate preserves all eight authored frame blocks"),
+        Timeline->Get_FrameWidth(7) == OriginalLastFrameWidth &&
+        Timeline->Get_TrackWidth() == OriginalTrackWidth);
     return true;
 }
 
