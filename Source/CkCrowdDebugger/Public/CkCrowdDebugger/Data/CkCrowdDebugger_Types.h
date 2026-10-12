@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkEcs/Handle/CkHandle.h"
+#include "CkCrowd/Debug/CkCrowd_RemoteDebugContract.h"
 
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
 
@@ -40,13 +41,20 @@ struct FCkCrowdDebugger_NeighborInfo
 	FCk_Handle Handle;
 	float      Distance = 0.0f;
 	FVector    RelativeOffset = FVector::ZeroVector;
+	FCkCrowdRemoteAgentId RemoteId;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
 
 struct FCkCrowdDebugger_AgentSnapshot
 {
-	FCk_Handle               Handle;
+	FCk_Handle               Handle; // invalid for remote rows; never manufacture a handle
+	bool                     IsRemote = false;
+	FCkCrowdRemoteAgentId     RemoteId;
+	int64                    RemoteSession = 0, RemoteSample = 0;
+	FString                  RemoteDisplayId, RemoteDebugName;
+	FLinearColor             RemoteBaseColor = FLinearColor::White;
+	bool                     RemoteHasDebugOverride = false;
 	FGameplayTagContainer    Tags;
 	ECkCrowdDebugger_AgentStatus Status = ECkCrowdDebugger_AgentStatus::None;
 	ECk_Nav_PathFailReason   PathFailReason = ECk_Nav_PathFailReason::None;

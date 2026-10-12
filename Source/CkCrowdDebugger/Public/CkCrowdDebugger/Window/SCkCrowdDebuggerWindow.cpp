@@ -35,6 +35,10 @@
 #include "CkSlateLayout/SCkUiSurface.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
+#include <Engine/World.h>
+#include <Engine/GameInstance.h>
+#include <Engine/LocalPlayer.h>
+#include <GameFramework/PlayerController.h>
 
 #include "CkVoxelNav/Volume/CkVoxelNavVolume_Utils.h"
 #if WITH_EDITOR
@@ -159,12 +163,25 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 	_EventLogPanel      = SNew(SCkCrowdDebugger_EventLogPanel).ViewModel(_ViewModel);
 	const auto WeakViewModel = TWeakPtr<FCkCrowdDebugger_ViewModel>{_ViewModel};
 	_ViewportPanel      = SNew(SCkCrowdDebugger_3dViewport)
+        .OnRemoteSelectionCleared_Lambda([WeakViewModel](const FCkCrowdDebugger_AgentSnapshot& Published)
+        {
+            if (const auto VM = WeakViewModel.Pin())
+            {
+                const auto& E = VM->Get_RemoteEnvelope();
+                if (VM->Get_IsRemote() && Published.IsRemote && Published.RemoteSession == E.SessionGeneration &&
+                    Published.RemoteSample == E.SampleSequence && Published.RemoteId.WorldGeneration == E.WorldGeneration)
+                { VM->TryClearRemoteSelection(); }
+            }
+        })
+		.OnRemoteAgentPicked_Lambda([WeakViewModel](const FCkCrowdDebugger_AgentSnapshot& InAgent)
+		{ if (const auto ViewModel = WeakViewModel.Pin()) { ViewModel->TrySelectRemoteAgent(InAgent); } })
 		.OnAgentPicked_Lambda([WeakViewModel](int32 InAgentIndex)
 		{
 			const auto ViewModel = WeakViewModel.Pin();
 			if (NOT ViewModel.IsValid())
 			{ return; }
 
+			if (ViewModel->Get_IsRemote()) { return; }
 			const auto& Agents = ViewModel->Get_AllAgents();
 			if (NOT Agents.IsValidIndex(InAgentIndex))
 			{ return; }
@@ -186,6 +203,7 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 			if (NOT ViewModel.IsValid())
 			{ return; }
 
+			if (ViewModel->Get_IsRemote()) { return; }
 			auto SelectedHandle = ViewModel->Get_SelectedHandle();
 			auto Agent = UCk_Utils_CrowdAgent_UE::Cast(SelectedHandle);
 			if (ck::Is_NOT_Valid(Agent))
@@ -218,7 +236,37 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 		.CommandGroups(BuildCommandGroups())
 		.CommonActionsContent()
 		[
-			SNew(SCkDebug_ViewportPickerControls).Picker(_ViewportPicker).PickTooltip(FText::FromString(TEXT("Enter pick mode: click a crowd agent in the viewport to inspect it.\nOnly crowd-agent entities (and their owning NPC) are shown and pickable.")))
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()
+            [
+                SNew(STextBlock)
+                .Visibility_Lambda([WeakViewModel]
+                { const auto VM = WeakViewModel.Pin(); return VM.IsValid() && VM->Get_IsRemote() ? EVisibility::Visible : EVisibility::Collapsed; })
+                .Text_Lambda([WeakViewModel]
+                {
+                    const auto VM = WeakViewModel.Pin();
+                    if (!VM.IsValid()) { return FText::GetEmpty(); }
+                    const auto& E = VM->Get_RemoteEnvelope(); // pure copied feedback; no receipt or request
+                    if (E.WorldGeneration <= 0) { return FText::FromString(TEXT("Remote selection: awaiting owner data")); }
+                    const TCHAR* Result = TEXT("failed");
+                    switch (E.Outcome)
+                    {
+                        case ECkCrowdRemoteSelectionOutcome::Accepted: Result = TEXT("accepted"); break;
+                        case ECkCrowdRemoteSelectionOutcome::Invalid: Result = TEXT("invalid"); break;
+                        case ECkCrowdRemoteSelectionOutcome::Stale: Result = TEXT("stale"); break;
+                        case ECkCrowdRemoteSelectionOutcome::Busy: Result = TEXT("busy"); break;
+                        case ECkCrowdRemoteSelectionOutcome::Unauthorized: Result = TEXT("unauthorized"); break;
+                        case ECkCrowdRemoteSelectionOutcome::Gone: Result = TEXT("owner context ended"); break;
+                        case ECkCrowdRemoteSelectionOutcome::Failed: Result = TEXT("failed"); break;
+                        default: break;
+                    }
+                    return FText::FromString(FString::Printf(TEXT("Remote selection: %s"), Result));
+                })
+            ]
+            + SVerticalBox::Slot().AutoHeight()
+            [
+                SNew(SCkDebug_ViewportPickerControls).Picker(_ViewportPicker).PickTooltip(FText::FromString(TEXT("Enter pick mode: click a crowd agent in the viewport to inspect it.\nOnly crowd-agent entities (and their owning NPC) are shown and pickable.")))
+            ]
 		]
 		.Content()
 		[
@@ -283,7 +331,16 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 	_WorldModel->Ensure_AutoSelect();
 	auto* World = _WorldModel->Get_SelectedWorld();
 
-	_ViewModel->Tick(World, InDeltaTime);
+    APlayerController* OwningPC = nullptr;
+    const auto* GI = IsValid(World) ? World->GetGameInstance() : nullptr;
+    if (IsValid(GI) && GI->GetWorld() == World && GI->GetLocalPlayers().Num() == 1)
+    {
+        const auto* LP = GI->GetLocalPlayers()[0];
+        auto* PC = IsValid(LP) ? LP->GetPlayerController(World) : nullptr;
+        if (IsValid(PC) && PC->GetWorld() == World && PC->IsLocalController() && PC->GetLocalPlayer() == LP)
+        { OwningPC = PC; }
+    }
+    _ViewModel->Tick(World, InDeltaTime, OwningPC);
 	if (_PendingTarget.IsSet())
 	{
 		const auto Target = _PendingTarget.GetValue();
@@ -298,7 +355,7 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 			_ViewModel->Get_NavGeometryRevision());
 		_ViewportPanel->Set_AgentSnapshots(
 			_ViewModel->Get_AllAgents(),
-			_ViewModel->Get_SelectedHandle());
+			_ViewModel->Get_SelectedHandle(), _ViewModel->Get_RemoteSelectedId(), _ViewModel->Get_IsRemote());
 		_ViewportPanel->Set_PathNetworkRibbons(_ViewModel->Get_PathNetworkRibbons());
 		_ViewportPanel->Set_QueueSnapshots(_ShowQueues ? _ViewModel->Get_Queues() : TArray<FCkCrowdDebugger_QueueSnapshot>{});
 		_ViewportPanel->Set_AvoidanceVolumeSnapshots(

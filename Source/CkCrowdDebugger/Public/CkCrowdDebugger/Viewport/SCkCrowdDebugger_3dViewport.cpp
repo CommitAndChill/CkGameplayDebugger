@@ -115,12 +115,19 @@ auto
 {
     _OnAgentPicked = InArgs._OnAgentPicked;
     _PreviewAdapter = MakeShared<FCkCrowdDebugger_3dPreviewAdapter>();
-    _PreviewAdapter->Set_OnSelected([Callback = _OnAgentPicked](TOptional<int32> InIndex)
+    _OnRemoteAgentPicked = InArgs._OnRemoteAgentPicked;
+    _OnRemoteSelectionCleared = InArgs._OnRemoteSelectionCleared;
+    _PreviewAdapter->Set_OnSelected([this](TOptional<int32> InIndex)
     {
-        if (InIndex.IsSet())
+        if (!InIndex.IsSet())
         {
-            Callback.ExecuteIfBound(*InIndex);
+            if (_PublishedRemote && !_PublishedPickRows.IsEmpty())
+            { _OnRemoteSelectionCleared.ExecuteIfBound(_PublishedPickRows[0]); }
+            return;
         }
+        if (_PublishedRemote)
+        { if (_PublishedPickRows.IsValidIndex(*InIndex)) { _OnRemoteAgentPicked.ExecuteIfBound(_PublishedPickRows[*InIndex]); } }
+        else { _OnAgentPicked.ExecuteIfBound(*InIndex); }
     });
 
     _OnWorldCommanded = InArgs._OnWorldCommanded;
@@ -148,7 +155,8 @@ auto
     Release_Presentation()
     -> void
 {
-    _OnAgentPicked = {};
+    _OnAgentPicked = {}; _OnRemoteAgentPicked = {}; _OnRemoteSelectionCleared = {};
+    _PendingPickRows.Reset(); _PublishedPickRows.Reset(); _PendingRemote = false; _PublishedRemote = false;
     _OnWorldCommanded = {};
     if (_PreviewAdapter.IsValid())
     { _PreviewAdapter->Set_OnSelected({}); _PreviewAdapter->Set_OnCommandAtPoint({}); }
@@ -255,6 +263,8 @@ auto
     // voxel volume" can no longer masquerade as "the world was replaced". Item keys and every
     // revision cache in the adapter are keyed to the epoch, so a genuine world change must bump it
     // even when there was no voxel data to clear.
+    _PendingPickRows.Reset(); _PublishedPickRows.Reset();
+    _PendingRemote = false; _PublishedRemote = false;
     ++_WorldEpoch;
     _Snapshot._WorldEpoch = _WorldEpoch;
     _Snapshot._Voxel = {};
@@ -271,19 +281,28 @@ auto
     SCkCrowdDebugger_3dViewport::
     Set_AgentSnapshots(
         const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents,
-        const FCk_Handle& InSelectedHandle)
+        const FCk_Handle& InSelectedHandle, const FCkCrowdRemoteAgentId& InRemoteSelected, bool bRemote)
     -> void
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SetAgentSnapshots);
     _Snapshot._WorldEpoch = _WorldEpoch;
+    const bool PickEpochChanged = _PendingRemote != bRemote || _PendingPickRows.Num() != InAgents.Num() ||
+        (bRemote && InAgents.Num() > 0 && (_PendingPickRows.Num() == 0 ||
+         _PendingPickRows[0].RemoteSample != InAgents[0].RemoteSample ||
+         _PendingPickRows[0].RemoteSession != InAgents[0].RemoteSession ||
+         _PendingPickRows[0].RemoteId.WorldGeneration != InAgents[0].RemoteId.WorldGeneration));
+    if (PickEpochChanged) { _SnapshotDirty = true; }
+    _PendingRemote = bRemote; _PendingPickRows = InAgents;
     _Snapshot._Agents.Reset(InAgents.Num());
     _Snapshot._SelectedIdentity.Reset();
     for (const auto& Agent : InAgents)
     {
-        const auto Identity = static_cast<uint64>(Agent.Handle.Get_Entity().Get_ID());
+        const auto Identity = Agent.IsRemote ? static_cast<uint64>(Agent.RemoteId.AgentSerial)
+            : static_cast<uint64>(Agent.Handle.Get_Entity().Get_ID());
         const auto Radius = FMath::Max(Agent.Radius, 12.0f);
         const auto Height = FMath::Max(Agent.Height, Radius * 2.0f);
-        const auto Selected = ck::IsValid(InSelectedHandle) && Agent.Handle == InSelectedHandle;
+        const auto Selected = Agent.IsRemote ? Agent.RemoteId == InRemoteSelected
+            : ck::IsValid(InSelectedHandle) && Agent.Handle == InSelectedHandle;
         _Snapshot._Agents.Add(FCkCrowdDebugger_3dAgentSnapshot{
             Identity,
             Agent.Position,
@@ -291,7 +310,7 @@ auto
             Radius,
             Height,
             Selected ? FLinearColor{1.0f, 0.9f, 0.2f, 1.0f}
-                : ck_crowd_debugger_3d_viewport::Get_AgentColor(Agent.Status),
+                : Agent.IsRemote ? Agent.RemoteBaseColor : ck_crowd_debugger_3d_viewport::Get_AgentColor(Agent.Status),
             Agent.PlannedPath});
         if (Selected)
         {
@@ -556,5 +575,7 @@ auto
     {
         TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_ViewportReconcile);
         _SnapshotDirty = NOT _PreviewAdapter->Reconcile(_Snapshot);
+        if (!_SnapshotDirty) { _PublishedPickRows = _PendingPickRows; _PublishedRemote = _PendingRemote; }
+        else { _PublishedPickRows.Reset(); _PublishedRemote = _PendingRemote; }
     }
 }

@@ -10,6 +10,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 DECLARE_DELEGATE_OneParam(FOnCkCrowdDebugger_AgentPicked, int32 /*AgentIndex*/);
+DECLARE_DELEGATE_OneParam(FOnCkCrowdDebugger_RemoteAgentPicked, const FCkCrowdDebugger_AgentSnapshot&);
 DECLARE_DELEGATE_OneParam(FOnCkCrowdDebugger_WorldCommanded, const FVector& /*WorldDestination*/);
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -35,6 +36,8 @@ class CKCROWDDEBUGGER_API SCkCrowdDebugger_3dViewport final : public SCompoundWi
 public:
     SLATE_BEGIN_ARGS(SCkCrowdDebugger_3dViewport) {}
         SLATE_EVENT(FOnCkCrowdDebugger_AgentPicked, OnAgentPicked)
+        SLATE_EVENT(FOnCkCrowdDebugger_RemoteAgentPicked, OnRemoteAgentPicked)
+        SLATE_EVENT(FOnCkCrowdDebugger_RemoteAgentPicked, OnRemoteSelectionCleared)
         SLATE_EVENT(FOnCkCrowdDebugger_WorldCommanded, OnWorldCommanded)
     SLATE_END_ARGS()
 
@@ -53,7 +56,8 @@ public:
     auto
     Set_AgentSnapshots(
         const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents,
-        const FCk_Handle& InSelectedHandle) -> void;
+        const FCk_Handle& InSelectedHandle,
+        const FCkCrowdRemoteAgentId& InRemoteSelected = {}, bool bRemote = false) -> void;
     auto
     Set_NavmeshTriangles(
         const TArray<FVector>& InNavTriVerts,
@@ -111,6 +115,9 @@ private:
     FCkCrowdDebugger_3dSceneSnapshot _Snapshot;
 
     FOnCkCrowdDebugger_AgentPicked _OnAgentPicked;
+    FOnCkCrowdDebugger_RemoteAgentPicked _OnRemoteAgentPicked, _OnRemoteSelectionCleared;
+    TArray<FCkCrowdDebugger_AgentSnapshot> _PendingPickRows, _PublishedPickRows;
+    bool _PendingRemote = false, _PublishedRemote = false;
     FOnCkCrowdDebugger_WorldCommanded _OnWorldCommanded;
     uint64 _WorldEpoch = 1;
     uint64 _PathNetworkRevision = 1;

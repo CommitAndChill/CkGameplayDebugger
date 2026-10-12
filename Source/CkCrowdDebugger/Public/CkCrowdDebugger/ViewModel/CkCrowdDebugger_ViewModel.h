@@ -8,6 +8,9 @@
 #include "Delegates/Delegate.h"
 
 class UWorld;
+class APlayerController;
+class ULocalPlayer;
+class APawn;
 
 // --------------------------------------------------------------------------------------------------------------------
 // MVVM-style view model. Plain C++ (not UObject). Owned by the window. Owns
@@ -32,7 +35,13 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnCrowd_ViewModeChanged,     ECk_CrowdDebug
 class CKCROWDDEBUGGER_API FCkCrowdDebugger_ViewModel
 {
 public:
-	auto Tick(UWorld* InWorld, float InDeltaTime) -> void;
+	auto Tick(UWorld* InWorld, float InDeltaTime, APlayerController* InOwningPC = nullptr) -> void;
+	auto Get_IsRemote() const -> bool { return _IsRemote; }
+	// Exact copied protocol value; presentation selection separately respects pawn admission.
+	auto Get_RemoteEnvelope() const -> const FCkCrowdRemoteSelectionEnvelope& { return _RemoteEnvelope; }
+	auto Get_RemoteSelectedId() const -> FCkCrowdRemoteAgentId;
+	auto TrySelectRemoteAgent(const FCkCrowdDebugger_AgentSnapshot& InAgent) -> bool;
+	auto TryClearRemoteSelection() -> bool;
 	auto Reset_ForWorldChange() -> void;
 
 	// Run a synthetic FindPathSync probe via the DataCollector. The world is the
@@ -87,6 +96,18 @@ public:
 	FSimpleMulticastDelegate      OnFrameSelectedAgentRequested;
 
 private:
+	auto TickRemote(UWorld* InWorld, APlayerController* InOwningPC) -> void;
+	auto ClearRemotePresentation() -> void;
+	auto PublishRemoteCache() -> void;
+	auto HasExactRemoteOwner() const -> bool;
+	bool _IsRemote = false, _HasPendingReceipt = false, _RequiresFreshPawnSelection = false;
+	int64 _PreviousPawnSelectionHigh = 0;
+	FCkCrowdRemoteSelectionEnvelope _RemoteEnvelope;
+	TWeakObjectPtr<APlayerController> _RemotePC;
+	TWeakObjectPtr<ULocalPlayer> _RemoteLP;
+	TWeakObjectPtr<APawn> _RemotePawn;
+	int64 _SeenWorldGeneration = 0, _SeenSessionGeneration = 0;
+	int64 _SeenSelectionRequest = 0, _SeenSample = 0, _ConsumedDelivery = 0;
 	FCkCrowdDebugger_DataCollector _DataCollector;
 	FCk_Handle _SelectedHandle;
 	bool _IsPaused = false;
