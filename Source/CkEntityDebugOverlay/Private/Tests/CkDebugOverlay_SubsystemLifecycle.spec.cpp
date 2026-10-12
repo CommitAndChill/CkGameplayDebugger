@@ -8,6 +8,7 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
 #include "Framework/Application/SlateApplication.h"
