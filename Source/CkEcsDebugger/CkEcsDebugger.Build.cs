@@ -5,6 +5,8 @@ public class CkEcsDebugger : CkModuleRules
 {
     public CkEcsDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
+        PrivateDependencyModuleNames.AddRange(new string[] { "CkGroundNav" });
+
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core",

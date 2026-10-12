@@ -5,6 +5,8 @@ public class CkAiDebugger : CkModuleRules
 {
     public CkAiDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
+        PrivateDependencyModuleNames.AddRange(new string[] { "CkGroundNav" });
+
         PrivateIncludePaths.Add(ModuleDirectory);
 
         PublicDependencyModuleNames.AddRange(new string[]

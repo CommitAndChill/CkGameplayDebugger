@@ -5,6 +5,8 @@ public class CkJoltDebugger : CkModuleRules
 {
     public CkJoltDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
+        PrivateDependencyModuleNames.AddRange(new string[] { "CkResourceLoader" });
+
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core",

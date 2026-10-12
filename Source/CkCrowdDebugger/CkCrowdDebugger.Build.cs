@@ -5,6 +5,8 @@ public class CkCrowdDebugger : CkModuleRules
 {
 	public CkCrowdDebugger(ReadOnlyTargetRules Target) : base(Target)
 	{
+		PrivateDependencyModuleNames.AddRange(new string[] { "CkGroundNav" });
+
 		PrivateIncludePaths.AddRange(new string[] {
 		});
 

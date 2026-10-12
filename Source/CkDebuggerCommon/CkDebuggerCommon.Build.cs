@@ -5,6 +5,8 @@ public class CkDebuggerCommon : CkModuleRules
 {
     public CkDebuggerCommon(ReadOnlyTargetRules Target) : base(Target)
     {
+        PrivateDependencyModuleNames.AddRange(new string[] { "CkResourceLoader" });
+
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core",
