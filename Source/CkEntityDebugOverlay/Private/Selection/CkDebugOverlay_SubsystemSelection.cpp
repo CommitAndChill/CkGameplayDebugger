@@ -33,6 +33,10 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SViewport.h"
 #include "Widgets/SWindow.h"
+#if WITH_EDITOR
+#include "EditorViewportClient.h"
+#include "Slate/SceneViewport.h"
+#endif
 
 UE_DEFINE_GAMEPLAY_TAG_STATIC(CkSelectionRootTag, "Ck.Debug.Selection.Root");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(CkSelectionCounterTag, "Ck.Debug.Selection.Composite.Counter");
@@ -98,17 +102,34 @@ auto UCk_DebugOverlay_Subsystem::CanHandle_GlobalInput() const -> bool
     auto* World = Resolve_ActiveWorld();
     if (ck::Is_NOT_Valid(World))
     { return false; }
+    auto* LocalPlayer = GetLocalPlayer();
+    if (ck::Is_NOT_Valid(LocalPlayer) || LocalPlayer->GetWorld() != World ||
+        LocalPlayer->GetControllerId() < 0)
+    { return false; }
+    const auto* Controller = LocalPlayer->GetPlayerController(World);
+    if (ck::Is_NOT_Valid(Controller) || Controller->GetLocalPlayer() != LocalPlayer)
+    { return false; }
     auto* Viewport = World->GetGameViewport();
-    if (ck::Is_NOT_Valid(Viewport))
+    if (ck::Is_NOT_Valid(Viewport) || LocalPlayer->ViewportClient.Get() != Viewport)
     { return false; }
     if (Viewport->ViewportConsole && Viewport->ViewportConsole->ConsoleActive())
     { return false; }
     // Only a focused viewport may own shortcuts. Editable text, console, chat, tool windows,
     // and the settings drawer never satisfy this; ejected SViewport is handled identically.
-    const auto Focused = App.GetKeyboardFocusedWidget();
+    const auto Focused = App.GetUserFocusedWidget(static_cast<uint32>(LocalPlayer->GetControllerId()));
     if (NOT Focused.IsValid() || Focused->GetType() != FName(TEXT("SViewport")))
     { return false; }
-    return ck::DebugViewportView::Get_IsEjected() || Focused == Viewport->GetGameViewportWidget();
+    if (Focused == Viewport->GetGameViewportWidget())
+    { return true; }
+#if WITH_EDITOR
+    auto* EditorClient = ck::DebugViewportView::TryGet_LevelEditorViewportForPlayer(World, LocalPlayer);
+    if (EditorClient == nullptr || EditorClient->Viewport == nullptr)
+    { return false; }
+    const auto EditorViewport = static_cast<FSceneViewport*>(EditorClient->Viewport)->GetViewportWidget().Pin();
+    return Focused == EditorViewport;
+#else
+    return false;
+#endif
 }
 
 auto UCk_DebugOverlay_Subsystem::Update_Selection(UWorld* InWorld,
@@ -124,7 +145,11 @@ auto UCk_DebugOverlay_Subsystem::Update_Selection(UWorld* InWorld,
         _SelectionWorld = InWorld;
     }
     _SelectionView = {InViewpoint.Location, InViewpoint.Forward};
-    _SelectionProjectionValid = ck::DebugViewportView::TryGet_Projection(InWorld, _SelectionProjection);
+    const auto* LocalPlayer = GetLocalPlayer();
+    auto* Controller = ck::IsValid(LocalPlayer) && LocalPlayer->GetWorld() == InWorld
+        ? LocalPlayer->GetPlayerController(InWorld) : nullptr;
+    _SelectionProjectionValid = ck::DebugViewportView::TryGet_Projection(
+        InWorld, LocalPlayer, _SelectionProjection);
     _SelectionNodes.Reset();
     _SelectionHandles.Reset();
     auto Transient = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
@@ -146,7 +171,7 @@ auto UCk_DebugOverlay_Subsystem::Update_Selection(UWorld* InWorld,
             ck::DebugDepthTransparency::Get_IsRelayEntity(InHandle);
         Node.Selectable = NOT Node.TransparentInfrastructure &&
             NOT InHandle.Has<ck::FFragment_Pmg_DebugShape_Common>() &&
-            NOT ck::DebugViewportView::Get_IsLocalPlayerSelf(InHandle);
+            NOT ck::DebugViewportView::Get_IsLocalPlayerSelf(InHandle, Controller);
         const auto IsContextRoot = UCk_Utils_ContextOwner_UE::Has(InHandle) &&
             UCk_Utils_ContextOwner_UE::Get_ContextOwner(InHandle) == InHandle;
         Node.MeaningfulBoundary = NOT Node.TransparentInfrastructure && (IsContextRoot ||
@@ -164,8 +189,8 @@ auto UCk_DebugOverlay_Subsystem::Update_Selection(UWorld* InWorld,
                 FVector::DistSquared(Node.Position, InViewpoint.Location) <= FMath::Square(Config.SearchRadius))
             {
                 auto Params = FCollisionQueryParams(SCENE_QUERY_STAT(CkSelectionOcclusion), false);
-                if (auto* PC = InWorld->GetFirstPlayerController(); ck::IsValid(PC))
-                { Params.AddIgnoredActor(PC->GetPawn().Get()); }
+                if (ck::IsValid(Controller))
+                { Params.AddIgnoredActor(Controller->GetPawn().Get()); }
                 // An entity's own actor is the target, not an occluder.
                 if (auto* Actor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor_Recursive(InHandle); ck::IsValid(Actor))
                 { Params.AddIgnoredActor(Actor); }
@@ -527,9 +552,11 @@ auto UCk_DebugOverlay_Subsystem::Update_SelectionHud() -> void
     const auto RelativeLabels = ck_debugoverlay::selection_session::BuildRelativeLabels(
         OrderedIds, SelectionId(_FocusedEntity), SelectionId(_SelectionRoot));
     const auto LocalSize = _SelectionHud->GetCachedGeometry().GetLocalSize();
+    const auto PlayerViewSize = _SelectionProjection.ViewRect.Size();
     const auto PixelToLocal = FVector2D(
-        _SelectionProjection.ViewSize.X > 0 ? LocalSize.X / _SelectionProjection.ViewSize.X : 1.0,
-        _SelectionProjection.ViewSize.Y > 0 ? LocalSize.Y / _SelectionProjection.ViewSize.Y : 1.0);
+        PlayerViewSize.X > 0 ? LocalSize.X / PlayerViewSize.X : 1.0,
+        PlayerViewSize.Y > 0 ? LocalSize.Y / PlayerViewSize.Y : 1.0);
+    const auto PlayerViewOrigin = FVector2D(_SelectionProjection.ViewRect.Min);
     for (const auto& Entry : Entries)
     {
         const auto Position = TryGet_SelectionPosition(Entry);
@@ -540,7 +567,7 @@ auto UCk_DebugOverlay_Subsystem::Update_SelectionHud() -> void
         if (NOT _SelectionProjectionValid || NOT _SelectionProjection.Project(Position.GetValue(), Pixel, Inside) || NOT Inside)
         { continue; }
         auto Marker = SCkDebugOverlay_SelectionHud::FMarker{};
-        Marker.Position = Pixel * PixelToLocal;
+        Marker.Position = (Pixel - PlayerViewOrigin) * PixelToLocal;
         Marker.Selected = Entry.Entity == _FocusedEntity ||
             (NOT _FamilyVisible && ck::IsValid(_FocusedEntity) && Entry.Entity == _SelectionRoot);
         Marker.Locked = Marker.Selected && _FocusLocked;
@@ -563,7 +590,7 @@ auto UCk_DebugOverlay_Subsystem::Update_SelectionHud() -> void
             auto Inside = false;
             if (NOT _SelectionProjection.Project(_SelectionView.Location + Direction * 1000.0, Pixel, Inside))
             { ConePoints.Reset(); break; }
-            ConePoints.Add(Pixel * PixelToLocal);
+            ConePoints.Add((Pixel - PlayerViewOrigin) * PixelToLocal);
         }
     }
     _SelectionHud->SetSnapshot(MoveTemp(Markers), MoveTemp(ConePoints), Config.DiamondScale);
@@ -575,14 +602,24 @@ auto UCk_DebugOverlay_Subsystem::DoCmd_Settings() -> void
     { Close_SelectionSettings(); return; }
     if (NOT FSlateApplication::IsInitialized())
     { return; }
-    const auto* LocalPlayer = GetLocalPlayer();
+    auto* LocalPlayer = GetLocalPlayer();
     if (ck::Is_NOT_Valid(LocalPlayer) || ck::Is_NOT_Valid(LocalPlayer->ViewportClient.Get()))
+    { return; }
+    auto* World = LocalPlayer->GetWorld();
+    auto* Controller = ck::IsValid(World) ? LocalPlayer->GetPlayerController(World) : nullptr;
+    if (ck::Is_NOT_Valid(Controller) || Controller->GetLocalPlayer() != LocalPlayer ||
+        LocalPlayer->ViewportClient.Get() != World->GetGameViewport())
     { return; }
     auto* Viewport = LocalPlayer->ViewportClient.Get();
     Set_FamilyVisible(false);
-    _SelectionPriorFocus = FSlateApplication::Get().GetKeyboardFocusedWidget();
+    const auto ControllerId = LocalPlayer->GetControllerId();
+    if (ControllerId < 0)
+    { return; }
+    _SelectionPanelUserIndex = ControllerId;
+    _SelectionPriorFocus = FSlateApplication::Get().GetUserFocusedWidget(static_cast<uint32>(ControllerId));
     const auto WeakSubsystem = TWeakObjectPtr<UCk_DebugOverlay_Subsystem>(this);
     _SelectionPanel = SNew(SCkDebugOverlay_SelectionPanel)
+        .OwningUserIndex(static_cast<uint32>(ControllerId))
         .OnClose(FSimpleDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::Close_SelectionSettings))
         .OnSelect([WeakSubsystem]() { if (auto* Self = WeakSubsystem.Get()) { Self->DoCmd_Select(); } })
         .OnPrevious([WeakSubsystem]() { if (auto* Self = WeakSubsystem.Get()) { Self->DoCmd_Prev(); } })
@@ -593,28 +630,25 @@ auto UCk_DebugOverlay_Subsystem::DoCmd_Settings() -> void
         .ExplanationText(FText::FromString(TEXT("Runtime preferences persist in GameUserSettings. Discovery updates continuously within range; cone and view scope govern aim selection. Badges rank the nearest screen-left (-) and screen-right (+) entities relative to selection (0). Tap a separately bound Select key for best aim; hold it to lock/unlock selection. Double-Shift independently pins a data card. Roots skip Transient/ActorRelay. Shipping debugger is disabled.")));
     _SelectionPanelHost = SNew(SBox).HAlign(HAlign_Right).VAlign(VAlign_Fill)
         [ SNew(SBox).WidthOverride(480.0f)[_SelectionPanel.ToSharedRef()] ];
-    Viewport->AddViewportWidgetContent(_SelectionPanelHost.ToSharedRef(), 120);
-    if (auto* PC = LocalPlayer->GetPlayerController(GetWorld()); ck::IsValid(PC))
-    {
-        _SelectionInputController = PC;
-        _SelectionPriorCursor = PC->bShowMouseCursor;
-        PC->bShowMouseCursor = true;
-        PC->SetIgnoreLookInput(true);
-        PC->SetIgnoreMoveInput(true);
-    }
-    FSlateApplication::Get().ReleaseAllPointerCapture();
-    FSlateApplication::Get().SetKeyboardFocus(_SelectionPanel, EFocusCause::SetDirectly);
+    _SelectionPanelPlayer = LocalPlayer;
+    _SelectionPanelViewport = Viewport;
+    Viewport->AddViewportWidgetForPlayer(_SelectionPanelPlayer.Get(), _SelectionPanelHost.ToSharedRef(), 120);
+    _SelectionInputController = Controller;
+    _SelectionPriorCursor = Controller->bShowMouseCursor;
+    Controller->bShowMouseCursor = true;
+    Controller->SetIgnoreLookInput(true);
+    Controller->SetIgnoreMoveInput(true);
+    FSlateApplication::Get().ReleaseAllPointerCapture(ControllerId);
+    FSlateApplication::Get().SetUserFocus(static_cast<uint32>(ControllerId),
+        _SelectionPanel, EFocusCause::SetDirectly);
 }
 
 auto UCk_DebugOverlay_Subsystem::Close_SelectionSettings() -> void
 {
     if (NOT _SelectionPanelHost.IsValid())
     { return; }
-    if (const auto* LocalPlayer = GetLocalPlayer(); ck::IsValid(LocalPlayer))
-    {
-        if (auto* Viewport = LocalPlayer->ViewportClient.Get(); ck::IsValid(Viewport))
-        { Viewport->RemoveViewportWidgetContent(_SelectionPanelHost.ToSharedRef()); }
-    }
+    if (auto* Viewport = _SelectionPanelViewport.Get(); ck::IsValid(Viewport))
+    { Viewport->RemoveViewportWidgetForPlayer(_SelectionPanelPlayer.Get(), _SelectionPanelHost.ToSharedRef()); }
     if (auto* PC = _SelectionInputController.Get())
     {
         PC->bShowMouseCursor = _SelectionPriorCursor;
@@ -624,12 +658,21 @@ auto UCk_DebugOverlay_Subsystem::Close_SelectionSettings() -> void
     _SelectionInputController.Reset();
     _SelectionPanel.Reset();
     _SelectionPanelHost.Reset();
+    _SelectionPanelPlayer.Reset();
+    _SelectionPanelViewport.Reset();
     if (FSlateApplication::IsInitialized())
     {
         if (const auto Prior = _SelectionPriorFocus.Pin())
-        { FSlateApplication::Get().SetKeyboardFocus(Prior, EFocusCause::SetDirectly); }
+        {
+            if (_SelectionPanelUserIndex >= 0)
+            {
+                FSlateApplication::Get().SetUserFocus(static_cast<uint32>(_SelectionPanelUserIndex),
+                    Prior, EFocusCause::SetDirectly);
+            }
+        }
     }
     _SelectionPriorFocus.Reset();
+    _SelectionPanelUserIndex = INDEX_NONE;
 }
 
 #endif

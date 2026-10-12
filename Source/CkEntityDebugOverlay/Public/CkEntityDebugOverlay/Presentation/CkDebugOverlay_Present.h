@@ -121,7 +121,8 @@ namespace ck_debugoverlay
     // Slate units (ProjectWorldToScreen pixels / InDpiScale) so each plate lands on its
     // diamond marker. InFocusEntity's plate is flagged bIsFocus (highlighted). Every on-screen
     // World tags remain truthfully anchored; co-located selection is disambiguated by the
-    // selection HUD's relative badges and Previous/Next shortcuts.
+    // selection HUD's relative badges and Previous/Next shortcuts. Set
+    // InPlayerViewportRelative when the caller attaches to a LocalPlayer layer.
     CKENTITYDEBUGOVERLAY_API auto Build_WorldTags(
         const TArray<FCk_Handle>&                            InHandles,
         const TArray<FCandidate>&                            InCandidates,
@@ -131,7 +132,8 @@ namespace ck_debugoverlay
         bool                                                 InIsEjected,
         float                                                InDpiScale    = 1.0f,
         const FCk_Handle&                                    InFocusEntity = FCk_Handle{},
-        const TSet<uint32>*                                  InRetainedEntityKeys = nullptr) -> TArray<FCk_DebugOverlay_WorldTagInfo>;
+        const TSet<uint32>*                                  InRetainedEntityKeys = nullptr,
+        bool                                                 InPlayerViewportRelative = false) -> TArray<FCk_DebugOverlay_WorldTagInfo>;
 
     // Resolve a layout by index from settings (index clamped to range). Null when no
     // layouts are configured.

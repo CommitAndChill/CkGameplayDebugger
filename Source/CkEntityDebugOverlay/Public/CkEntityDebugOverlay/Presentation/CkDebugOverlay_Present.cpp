@@ -557,7 +557,8 @@ auto
         bool                                                 InIsEjected,
         float                                                InDpiScale,
         const FCk_Handle&                                    InFocusEntity,
-        const TSet<uint32>*                                  InRetainedEntityKeys)
+        const TSet<uint32>*                                  InRetainedEntityKeys,
+        bool                                                 InPlayerViewportRelative)
     -> TArray<FCk_DebugOverlay_WorldTagInfo>
 {
     auto WorldTags = TArray<FCk_DebugOverlay_WorldTagInfo>{};
@@ -630,7 +631,7 @@ auto
         auto ScreenPos = FVector2D{};
         if (NOT UGameplayStatics::ProjectWorldToScreen(
             InPC, InCandidates[CandIdx].WorldLocation, ScreenPos,
-            /*bPlayerViewportRelative=*/false))
+            InPlayerViewportRelative))
         { continue; }
 
         const auto Scale = FMath::GetMappedRangeValueClamped(
@@ -640,8 +641,8 @@ auto
 
         auto TagInfo = FCk_DebugOverlay_WorldTagInfo{};
         TagInfo.EntityKey = EntityKey;
-        // ProjectWorldToScreen returns raw viewport pixels; a viewport Slate overlay positions
-        // children in DPI-scaled units, so divide by the DPI scale to land on the marker.
+        // Projection uses either full-viewport or owner-relative pixels according to the
+        // attachment layer. Slate positions children in DPI-scaled units.
         TagInfo.ScreenPos = ScreenPos / InDpiScale;
         TagInfo.Scale = Scale;
         TagInfo.Distance = Dist;

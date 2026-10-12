@@ -85,6 +85,7 @@ auto SCkDebugOverlay_SelectionPanel::Construct(const FArguments& InArgs) -> void
     _OnFamily = InArgs._OnFamily;
     _StatusText = InArgs._StatusText;
     _ExplanationText = InArgs._ExplanationText;
+    _OwningUserIndex = InArgs._OwningUserIndex;
 
     ChildSlot
     [
@@ -452,7 +453,7 @@ auto SCkDebugOverlay_SelectionPanel::Build_NamedPresetSection() -> TSharedRef<SW
 auto SCkDebugOverlay_SelectionPanel::Begin_BindingCapture(FName InBinding) -> FReply
 {
     _BindingToCapture = InBinding;
-    FSlateApplication::Get().SetKeyboardFocus(AsShared(), EFocusCause::SetDirectly);
+    FSlateApplication::Get().SetUserFocus(_OwningUserIndex, AsShared(), EFocusCause::SetDirectly);
     return FReply::Handled();
 }
 
@@ -506,6 +507,8 @@ auto SCkDebugOverlay_SelectionPanel::Get_StatusText() const -> FText
 
 auto SCkDebugOverlay_SelectionPanel::OnPreviewKeyDown(const FGeometry&, const FKeyEvent& InKeyEvent) -> FReply
 {
+    if (InKeyEvent.GetUserIndex() != _OwningUserIndex)
+    { return FReply::Unhandled(); }
     const auto Key = InKeyEvent.GetKey();
     if (Key == EKeys::Escape)
     {
@@ -528,6 +531,8 @@ auto SCkDebugOverlay_SelectionPanel::OnPreviewKeyDown(const FGeometry&, const FK
 
 auto SCkDebugOverlay_SelectionPanel::OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply
 {
+    if (InKeyEvent.GetUserIndex() != _OwningUserIndex)
+    { return FReply::Unhandled(); }
     const auto Key = InKeyEvent.GetKey();
     if (Key == EKeys::Escape)
     {

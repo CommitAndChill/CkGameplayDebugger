@@ -14,7 +14,7 @@
 #include "CkEntityDebugOverlay/Selection/CkDebugOverlay_Selection.h"
 
 #if WITH_CK_DEBUG_OVERLAY
-// Global Slate input pre-processor — keeps double-tap gestures alive while ejected.
+// Per-player Slate input pre-processor — keeps double-tap gestures alive while ejected.
 #include "CkEntityDebugOverlay/Input/CkDebugOverlay_InputProcessor.h"
 #include "CkEntityDebugOverlay/Selection/CkDebugOverlay_SelectionSession.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
@@ -25,6 +25,7 @@
 class APlayerController;
 class UCanvas;
 class UGameViewportClient;
+class ULocalPlayer;
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_CK_DEBUG_OVERLAY
 struct FCk_DebugOverlay_Subsystem_TestState
@@ -40,6 +41,17 @@ struct FCk_DebugOverlay_Subsystem_TestState
     bool HasWorldInvalidationCallback = false;
     bool HasOwnedConsoleObjects = false;
 };
+
+/** Read-only state after the ordinary overlay ticker and production commands. */
+struct FCk_DebugOverlay_SelectionTestSnapshot
+{
+    TArray<FCk_Handle> Gathered;
+    TArray<FCk_Handle> Candidates;
+    FCk_Handle Focused;
+    FCk_Handle Locked;
+    FCk_Handle SelectionRoot;
+    bool FamilyVisible = false;
+};
 #endif
 
 // ====================================================================================================================
@@ -50,7 +62,7 @@ struct FCk_DebugOverlay_Subsystem_TestState
 // no overhead. The UCLASS declaration is unconditional so UHT always sees it.
 //
 // Per-frame tick (when active):
-//   1. Resolve active world (own LP world or manual PIE override).
+//   1. Resolve the owning local player's world.
 //   2. Gather live ECS topology, resolve meaningful roots and spatial anchors.
 //   3. Project through the active player/ejected camera.
 //   4. Update the identity-stable selection session and handle deliberate actions.
@@ -78,6 +90,13 @@ public:
 public:
     /** Test-only census of resources whose owner is this LocalPlayer subsystem. */
     auto Get_TestRootWidget() const -> TSharedPtr<class SCkDebugOverlay_Root> { return _RootWidget; }
+    auto Get_TestAttachedPlayer() const -> ULocalPlayer* { return _AttachedPlayer.Get(); }
+    auto Toggle_LocalVisibilityForTest() -> void
+    {
+        Apply_GlobalInputAction(_RootWidget.IsValid()
+            ? ECkDebugOverlayGlobalInputAction::Deactivate
+            : ECkDebugOverlayGlobalInputAction::Activate);
+    }
 
     auto Get_TestState() const -> FCk_DebugOverlay_Subsystem_TestState
     {
@@ -94,6 +113,17 @@ public:
             _CVar_Master != nullptr || _Cmd_Select.IsValid() || _Cmd_Settings.IsValid() || _Cmd_Family.IsValid() ||
                 _Cmd_Next.IsValid() || _Cmd_Prev.IsValid() || _Cmd_Lock.IsValid() || _Cmd_Layout_Next.IsValid() ||
                 _Cmd_Layout_Prev.IsValid() || _Cmd_UnpinAll.IsValid() || _Cmd_Help.IsValid() || _Cmd_World.IsValid()};
+    }
+    auto Get_TestSelectionSnapshot() const -> FCk_DebugOverlay_SelectionTestSnapshot
+    {
+        FCk_DebugOverlay_SelectionTestSnapshot Result;
+        for (const auto& Pair : _SelectionHandles) { Result.Gathered.Add(Pair.Value); }
+        Result.Candidates = _LastFrameCandidates;
+        Result.Focused = _FocusedEntity;
+        Result.Locked = _SelectionLockedEntity;
+        Result.SelectionRoot = _SelectionRoot;
+        Result.FamilyVisible = _FamilyVisible;
+        return Result;
     }
 #endif
 
@@ -115,6 +145,7 @@ private:
     auto CanHandle_SelectionInput() const -> bool;
     auto CanHandle_GlobalInput() const -> bool;
     auto Register_InputProcessor() -> void;
+    auto Apply_GlobalInputAction(ECkDebugOverlayGlobalInputAction InAction) -> void;
     auto DoCmd_Select() -> void;
     auto DoCmd_Settings() -> void;
     auto DoCmd_Family() -> void;
@@ -145,13 +176,16 @@ private:
     TSharedPtr<class SCkDebugOverlay_SelectionPanel> _SelectionPanel;
     TSharedPtr<SWidget> _SelectionPanelHost;
     TWeakPtr<SWidget> _SelectionPriorFocus;
+    TWeakObjectPtr<ULocalPlayer> _SelectionPanelPlayer;
+    TWeakObjectPtr<UGameViewportClient> _SelectionPanelViewport;
     TWeakObjectPtr<APlayerController> _SelectionInputController;
+    int32 _SelectionPanelUserIndex = INDEX_NONE;
     bool _SelectionPriorCursor = false;
     FDelegateHandle _SelectionSessionInvalidated;
     FDelegateHandle _SelectionWorldInvalidated;
-    TUniquePtr<FAutoConsoleCommand> _Cmd_Select;
-    TUniquePtr<FAutoConsoleCommand> _Cmd_Settings;
-    TUniquePtr<FAutoConsoleCommand> _Cmd_Family;
+    TUniquePtr<FAutoConsoleCommandWithWorld> _Cmd_Select;
+    TUniquePtr<FAutoConsoleCommandWithWorld> _Cmd_Settings;
+    TUniquePtr<FAutoConsoleCommandWithWorld> _Cmd_Family;
 
     // ---- Activation / deactivation ----
     auto DoActivate()   -> void;
@@ -193,6 +227,8 @@ private:
 
     // ---- CVar / command callbacks ----
     auto OnCVar_MasterChanged(IConsoleVariable* InVar) -> void;
+    auto Register_ConsoleCommands() -> void;
+    static auto Resolve_CommandTarget(UWorld* InWorld) -> UCk_DebugOverlay_Subsystem*;
     auto DoCmd_Next()        -> void;
     auto DoCmd_Prev()        -> void;
     auto DoCmd_Lock()        -> void;
@@ -211,6 +247,7 @@ private:
     // Exact viewport that accepted this local player's widgets. Never remove from a newly
     // assigned viewport during controller/world transitions.
     TWeakObjectPtr<UGameViewportClient> _AttachedViewport;
+    TWeakObjectPtr<ULocalPlayer> _AttachedPlayer;
 
     // FTSTicker registration.
     FTSTicker::FDelegateHandle _TickerHandle;
@@ -237,6 +274,9 @@ private:
     // True while the user is ejected from PIE (F8) and the editor camera drives the
     // view — focus picking follows it; PC-projected world tags are suppressed.
     bool _ViewpointIsEjected = false;
+    // An input shortcut changes only this player's overlay; an explicit master CVar write
+    // clears the override and applies to every local player.
+    TOptional<bool> _LocalVisibilityOverride;
 
     // B3 — Double-tap lock detection.
     // Tracks the timestamp of the most recent LockKey press for double-tap detection.
@@ -257,7 +297,7 @@ private:
     // with the rest of the session state on deactivation.
     ECk_DebugOverlay_LodTier _LodTier = ECk_DebugOverlay_LodTier::Full;
 
-    // Global Slate input pre-processor — observes key-downs regardless of game-vs-editor
+    // Per-player Slate input pre-processor — observes owned key-downs regardless of game-vs-editor
     // viewport focus so the double-tap gestures keep working while ejected (F8).
     TSharedPtr<FCkDebugOverlay_InputProcessor> _InputProcessor;
 
@@ -270,25 +310,18 @@ private:
     // Whether the full keyboard-hints legend is shown (toggled by HelpKey / Help command).
     bool _ShowFullLegend = false;
 
-    // Engine on-screen debug text state saved at activation (suppressed while the overlay
-    // is active — the plate owns the top-left corner) and restored on deactivation.
-    bool _PriorOnScreenMessagesEnabled = true;
-
-    // PIE world override: INDEX_NONE = use own LP world.
+    // Optional explicit PIE context index, accepted only for this local player's world.
     int32 _WorldOverrideIndex = INDEX_NONE;
 
     // Console: raw pointer to the static TAutoConsoleVariable (not owned).
-    TAutoConsoleVariable<int32>* _CVar_Master          = nullptr;
-    // True if this instance registered the console commands (first LP subsystem wins).
-    bool                         _bIsPrimaryConsoleOwner = false;
-
-    TUniquePtr<FAutoConsoleCommand>                _Cmd_Next;
-    TUniquePtr<FAutoConsoleCommand>                _Cmd_Prev;
-    TUniquePtr<FAutoConsoleCommand>                _Cmd_Lock;
-    TUniquePtr<FAutoConsoleCommand>                _Cmd_Layout_Next;
-    TUniquePtr<FAutoConsoleCommand>                _Cmd_Layout_Prev;
-    TUniquePtr<FAutoConsoleCommand>                _Cmd_UnpinAll;
-    TUniquePtr<FAutoConsoleCommand>                _Cmd_Help;
+    TAutoConsoleVariable<int32>* _CVar_Master = nullptr;
+    TUniquePtr<FAutoConsoleCommandWithWorld>       _Cmd_Next;
+    TUniquePtr<FAutoConsoleCommandWithWorld>       _Cmd_Prev;
+    TUniquePtr<FAutoConsoleCommandWithWorld>       _Cmd_Lock;
+    TUniquePtr<FAutoConsoleCommandWithWorld>       _Cmd_Layout_Next;
+    TUniquePtr<FAutoConsoleCommandWithWorld>       _Cmd_Layout_Prev;
+    TUniquePtr<FAutoConsoleCommandWithWorld>       _Cmd_UnpinAll;
+    TUniquePtr<FAutoConsoleCommandWithWorld>       _Cmd_Help;
     TUniquePtr<FAutoConsoleCommandWithWorldAndArgs> _Cmd_World;
 
 #endif // WITH_CK_DEBUG_OVERLAY

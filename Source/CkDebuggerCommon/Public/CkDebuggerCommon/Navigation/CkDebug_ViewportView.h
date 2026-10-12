@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 
 class FEditorViewportClient;
+class APlayerController;
+class ULocalPlayer;
 class UWorld;
 struct FCk_Handle;
 
@@ -33,6 +35,9 @@ namespace ck::DebugViewportView
     };
 
     CKDEBUGGERCOMMON_API auto TryGet_Projection(UWorld* InWorld, FProjection& OutProjection) -> bool;
+    /** Resolve projection from the specified local player's view; invalid or foreign players fail closed. */
+    CKDEBUGGERCOMMON_API auto TryGet_Projection(UWorld* InWorld, const ULocalPlayer* InPlayer,
+        FProjection& OutProjection) -> bool;
 
     /** Converts normalized viewport coordinates to pixels, rejecting points outside the viewport. */
     CKDEBUGGERCOMMON_API auto
@@ -44,6 +49,9 @@ namespace ck::DebugViewportView
     // The level-editor viewport client currently driving input/rendering, or
     // nullptr when the player is possessed (or no PIE). Non-null == "ejected".
     CKDEBUGGERCOMMON_API auto TryGet_LevelEditorViewport() -> FEditorViewportClient*;
+    /** Ejected editor view only when the active PIE world has this sole local player. */
+    CKDEBUGGERCOMMON_API auto TryGet_LevelEditorViewportForPlayer(
+        UWorld* InWorld, const ULocalPlayer* InPlayer) -> FEditorViewportClient*;
 #endif
 
     // True when an ejected/simulate editor camera is the active view.
@@ -55,6 +63,8 @@ namespace ck::DebugViewportView
     // first-person camera. Always false while ejected: the pawn is then just
     // another world object.
     CKDEBUGGERCOMMON_API auto Get_IsLocalPlayerSelf(const FCk_Handle& InEntity) -> bool;
+    CKDEBUGGERCOMMON_API auto Get_IsLocalPlayerSelf(const FCk_Handle& InEntity,
+        const APlayerController* InController) -> bool;
 
     // Location of the camera the user is looking through — the level-editor
     // camera while ejected, else the first player controller's view point.
