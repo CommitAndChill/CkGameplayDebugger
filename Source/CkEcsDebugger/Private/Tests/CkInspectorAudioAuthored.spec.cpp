@@ -1,5 +1,9 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
+// Keep exported handle constructors' access unchanged in this unity translation unit.
+#include "CkAudio/AudioDirector/CkAudioDirector_Fragment_Data.h"
+#include "CkAudio/AudioTrack/CkAudioTrack_Fragment_Data.h"
+
 #define private public
 #include "CkAudio/AudioDirector/CkAudioDirector_Fragment.h"
 #include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
