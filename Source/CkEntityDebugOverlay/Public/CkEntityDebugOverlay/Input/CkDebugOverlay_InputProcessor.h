@@ -15,12 +15,13 @@
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 
 // ====================================================================================================================
-// Global Slate input pre-processor for the on-screen entity debug overlay.
+// Slate input pre-processor owned by one local player's on-screen entity debug overlay.
 //
 // PC->WasInputKeyJustPressed dies when the user ejects from PIE (F8): keyboard input then
 // routes to the editor viewport, not the game PlayerController, so the overlay's double-tap
 // gestures stop registering. This pre-processor observes key-down events from
-// FSlateApplication directly (regardless of game-vs-editor viewport focus). Legacy gestures
+// FSlateApplication directly (regardless of game-vs-editor viewport focus). The owning-user
+// callback rejects other local players before any key capture or action. Legacy gestures
 // observe their presses; focused selection bindings capture and consume their paired key events
 // so selection input cannot leak into the game viewport.
 //
@@ -96,11 +97,13 @@ public:
         TFunction<bool()> InCanHandleSelectionInput = {},
         TFunction<bool()> InCanHandleGlobalInput = {},
         TFunction<bool()> InIsOverlayActive = {},
-        TFunction<void(ECkDebugOverlayGlobalInputAction)> InOnGlobalAction = {})
+        TFunction<void(ECkDebugOverlayGlobalInputAction)> InOnGlobalAction = {},
+        TFunction<bool(uint32)> InIsOwningUser = {})
         : _CanHandleSelectionInput(MoveTemp(InCanHandleSelectionInput))
         , _CanHandleGlobalInput(MoveTemp(InCanHandleGlobalInput))
         , _IsOverlayActive(MoveTemp(InIsOverlayActive))
         , _OnGlobalAction(MoveTemp(InOnGlobalAction))
+        , _IsOwningUser(MoveTemp(InIsOwningUser))
     {}
 
     auto SetCanHandleSelectionInput(TFunction<bool()> InCanHandleSelectionInput) -> void
@@ -148,6 +151,8 @@ public:
 
     virtual bool HandleKeyDownEvent(FSlateApplication& /*InSlateApp*/, const FKeyEvent& InKeyEvent) override
     {
+        if (_IsOwningUser && NOT _IsOwningUser(InKeyEvent.GetUserIndex()))
+        { return false; }
         if (const auto* Settings = GetDefault<UCk_DebugOverlay_InputSettings>())
         { SetSelectionBindings(*Settings); }
         const auto bCanHandle = CanHandleSelectionInput();
@@ -172,6 +177,8 @@ public:
 
     virtual bool HandleKeyUpEvent(FSlateApplication& /*InSlateApp*/, const FKeyEvent& InKeyEvent) override
     {
+        if (_IsOwningUser && NOT _IsOwningUser(InKeyEvent.GetUserIndex()))
+        { return false; }
         if (NOT CanHandleSelectionInput())
         { ClearSelectionForFocusLoss(); }
         return RouteSelectionKeyUp(InKeyEvent.GetKey(), FPlatformTime::Seconds());
@@ -356,6 +363,7 @@ private:
     TFunction<bool()> _CanHandleGlobalInput;
     TFunction<bool()> _IsOverlayActive;
     TFunction<void(ECkDebugOverlayGlobalInputAction)> _OnGlobalAction;
+    TFunction<bool(uint32)> _IsOwningUser;
     FKey _ActivateOverlayKey = EKeys::Comma;
     FKey _OpenSettingsKey = EKeys::P;
     TSet<FKey> _CapturedKeys;

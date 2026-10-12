@@ -19,6 +19,7 @@ public:
     SLATE_BEGIN_ARGS(SCkDebugOverlay_SelectionPanel)
         : _StatusText(FText::GetEmpty())
         , _ExplanationText(FText::GetEmpty())
+        , _OwningUserIndex(0)
     {}
         SLATE_EVENT(FSimpleDelegate, OnClose)
         SLATE_ARGUMENT(TFunction<void()>, OnSelect)
@@ -27,6 +28,7 @@ public:
         SLATE_ARGUMENT(TFunction<void()>, OnFamily)
         SLATE_ATTRIBUTE(FText, StatusText)
         SLATE_ATTRIBUTE(FText, ExplanationText)
+        SLATE_ARGUMENT(uint32, OwningUserIndex)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -63,6 +65,7 @@ private:
     TFunction<void()> _OnFamily;
     TAttribute<FText> _StatusText;
     TAttribute<FText> _ExplanationText;
+    uint32 _OwningUserIndex = 0;
     FName _BindingToCapture;
     TSharedPtr<SEditableTextBox> _PresetNameText;
     FString _PanelError;

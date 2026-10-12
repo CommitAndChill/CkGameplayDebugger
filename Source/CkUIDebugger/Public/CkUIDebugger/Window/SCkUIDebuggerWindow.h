@@ -15,6 +15,9 @@ class SBox;
 class UCk_UI_Layout_Subsystem_UE;
 class UCk_UI_LayerStack_UE;
 class UCk_UI_PrimaryGameLayout_UE;
+class UWorld;
+
+DECLARE_DELEGATE_RetVal(TWeakObjectPtr<UWorld>, FCkUIDebugger_WorldSelector);
 
 // --------------------------------------------------------------------------------------------------------------------
 // History event
@@ -39,6 +42,7 @@ public:
     static const FName WindowId;
 
     SLATE_BEGIN_ARGS(SCkUIDebuggerWindow) {}
+        SLATE_EVENT(FCkUIDebugger_WorldSelector, TargetWorld)
     SLATE_END_ARGS()
 
     ~SCkUIDebuggerWindow();
@@ -122,6 +126,7 @@ private:
 
     // ---- State ----
 
+    FCkUIDebugger_WorldSelector _TargetWorldSelector;
     TWeakObjectPtr<UCk_UI_PrimaryGameLayout_UE> _BoundLayout;
     TArray<FCkUIDebugger_HistoryEvent> _HistoryEvents;
     TSharedPtr<FCkUiTreeCollection> _LayerCollection;

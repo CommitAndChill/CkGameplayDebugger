@@ -58,6 +58,9 @@ namespace
 {
     // Overlay widget Z-order — sits above game UI but below modal dialogs.
     constexpr int32 OverlayZOrder = 100;
+    TArray<TWeakObjectPtr<UCk_DebugOverlay_Subsystem>> OverlayInstances;
+    int32 ActiveOverlayCount = 0;
+    bool PriorOnScreenMessagesEnabled = true;
 
     // NOTE: the `ck.DebugOverlay.NearPlates` cvar now lives in CkDebugOverlay_Present.cpp
     // (alongside Build_WorldTags, its only reader). The overlay popover reads it by name.
@@ -81,14 +84,8 @@ auto
     Super::Initialize(InCollection);
 
     // ---- Master CVar and commands ----
-    // Console objects must be registered only once across all local-player subsystem instances
-    // (multi-player PIE creates one subsystem per local player). We use a function-local static
-    // for the CVar (safe: static initializes only once) and only create the command TUniquePtr
-    // objects for the first registered instance (the "primary" overlay). In practice the dev
-    // overlay is only useful for the first local player.
-    //
-    // BATCH-VERIFY: if multi-player overlay support is needed, factor the console commands
-    // into a separate game-instance subsystem.
+    // The master switch is process-wide; every live local player owns an independent overlay.
+    // Commands remain registered once, while the cvar callback fans out to every instance.
     static TAutoConsoleVariable<int32> CVar_Master(
         TEXT("ck.DebugOverlay"),
         0,
@@ -96,72 +93,18 @@ auto
         ECVF_Cheat);
 
     _CVar_Master = &CVar_Master;
+    OverlayInstances.Add(this);
+    _CVar_Master->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateLambda(
+        [](IConsoleVariable* InVar)
+        {
+            for (const auto& WeakInstance : OverlayInstances)
+            {
+                if (auto* Instance = WeakInstance.Get())
+                { Instance->OnCVar_MasterChanged(InVar); }
+            }
+        }));
 
-    // Only the first instance owns the commands.  IConsoleManager::FindConsoleObject lets us
-    // detect whether they already exist.
-    const bool bFirstInstance =
-        (IConsoleManager::Get().FindConsoleObject(TEXT("ck.DebugOverlay.Next")) == nullptr);
-    _bIsPrimaryConsoleOwner = bFirstInstance;
-
-    if (bFirstInstance)
-    {
-        _CVar_Master->AsVariable()->SetOnChangedCallback(
-            FConsoleVariableDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::OnCVar_MasterChanged));
-
-        _Cmd_Select = MakeUnique<FAutoConsoleCommand>(TEXT("ck.DebugOverlay.Select"),
-            TEXT("Refresh candidates and select the best target."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Select));
-        _Cmd_Settings = MakeUnique<FAutoConsoleCommand>(TEXT("ck.DebugOverlay.Settings"),
-            TEXT("Open/close runtime Overlay settings."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Settings));
-        _Cmd_Family = MakeUnique<FAutoConsoleCommand>(TEXT("ck.DebugOverlay.Family"),
-            TEXT("Toggle the selected family."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Family));
-        _Cmd_Next = MakeUnique<FAutoConsoleCommand>(
-            TEXT("ck.DebugOverlay.Next"),
-            TEXT("Select the next screen-right numbered candidate until the aim target changes."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Next));
-
-        _Cmd_Prev = MakeUnique<FAutoConsoleCommand>(
-            TEXT("ck.DebugOverlay.Prev"),
-            TEXT("Select the previous screen-left numbered candidate until the aim target changes."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Prev));
-
-        _Cmd_Lock = MakeUnique<FAutoConsoleCommand>(
-            TEXT("ck.DebugOverlay.Lock"),
-            TEXT("Toggle the current selection lock. Data-card pinning remains independent."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Lock));
-
-        _Cmd_Layout_Next = MakeUnique<FAutoConsoleCommand>(
-            TEXT("ck.DebugOverlay.Layout.Next"),
-            TEXT("Cycle to the next debug overlay layout."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Layout_Next));
-
-        _Cmd_Layout_Prev = MakeUnique<FAutoConsoleCommand>(
-            TEXT("ck.DebugOverlay.Layout.Prev"),
-            TEXT("Cycle to the previous debug overlay layout."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Layout_Prev));
-
-        _Cmd_UnpinAll = MakeUnique<FAutoConsoleCommand>(
-            TEXT("ck.DebugOverlay.UnpinAll"),
-            TEXT("Release all pinned overlay cards."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_UnpinAll));
-
-        _Cmd_Help = MakeUnique<FAutoConsoleCommand>(
-            TEXT("ck.DebugOverlay.Help"),
-            TEXT("Toggle the full keyboard-hints legend."),
-            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Help));
-
-        _Cmd_World = MakeUnique<FAutoConsoleCommandWithWorldAndArgs>(
-            TEXT("ck.DebugOverlay.World"),
-            TEXT("Override which PIE world the overlay targets. Args: 'next' or <integer index>."),
-            FConsoleCommandWithWorldAndArgsDelegate::CreateUObject(
-                this, &UCk_DebugOverlay_Subsystem::DoCmd_World));
-    }
-    else
-    {
-        ck::debug_overlay::Log(TEXT("UCk_DebugOverlay_Subsystem: secondary instance — console commands owned by primary"));
-    }
+    Register_ConsoleCommands();
 
     Register_InputProcessor();
 
@@ -212,6 +155,82 @@ auto
 
 auto
     UCk_DebugOverlay_Subsystem::
+    Resolve_CommandTarget(UWorld* InWorld)
+    -> UCk_DebugOverlay_Subsystem*
+{
+    auto* Result = static_cast<UCk_DebugOverlay_Subsystem*>(nullptr);
+    for (const auto& WeakInstance : OverlayInstances)
+    {
+        auto* Instance = WeakInstance.Get();
+        const auto* Player = Instance != nullptr ? Instance->GetLocalPlayer() : nullptr;
+        if (ck::Is_NOT_Valid(Player))
+        { continue; }
+        auto* PlayerWorld = Player->GetWorld();
+        if (ck::Is_NOT_Valid(PlayerWorld) ||
+            (ck::IsValid(InWorld) && PlayerWorld != InWorld))
+        { continue; }
+        // A world command has no player identity. Refuse ambiguous split-screen routing;
+        // a context-free console command may still address the sole live local player.
+        if (Result != nullptr)
+        {
+            ck::debug_overlay::Warning(TEXT("Debug overlay command needs an unambiguous local-player world"));
+            return nullptr;
+        }
+        Result = Instance;
+    }
+    return Result;
+}
+
+auto
+    UCk_DebugOverlay_Subsystem::
+    Register_ConsoleCommands()
+    -> void
+{
+    if (IConsoleManager::Get().FindConsoleObject(TEXT("ck.DebugOverlay.Next")) != nullptr)
+    { return; }
+    const auto Bind = [](auto InMethod) -> FConsoleCommandWithWorldDelegate
+    {
+        return FConsoleCommandWithWorldDelegate::CreateLambda([InMethod](UWorld* InWorld)
+        {
+            if (auto* Target = UCk_DebugOverlay_Subsystem::Resolve_CommandTarget(InWorld))
+            { (Target->*InMethod)(); }
+        });
+    };
+    _Cmd_Select = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.Select"),
+        TEXT("Refresh candidates and select the best target."), Bind(&UCk_DebugOverlay_Subsystem::DoCmd_Select));
+    _Cmd_Settings = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.Settings"),
+        TEXT("Open/close runtime Overlay settings."), Bind(&UCk_DebugOverlay_Subsystem::DoCmd_Settings));
+    _Cmd_Family = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.Family"),
+        TEXT("Toggle the selected family."), Bind(&UCk_DebugOverlay_Subsystem::DoCmd_Family));
+    _Cmd_Next = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.Next"),
+        TEXT("Select the next screen-right numbered candidate until the aim target changes."),
+        Bind(&UCk_DebugOverlay_Subsystem::DoCmd_Next));
+    _Cmd_Prev = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.Prev"),
+        TEXT("Select the previous screen-left numbered candidate until the aim target changes."),
+        Bind(&UCk_DebugOverlay_Subsystem::DoCmd_Prev));
+    _Cmd_Lock = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.Lock"),
+        TEXT("Toggle the current selection lock. Data-card pinning remains independent."),
+        Bind(&UCk_DebugOverlay_Subsystem::DoCmd_Lock));
+    _Cmd_Layout_Next = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.Layout.Next"),
+        TEXT("Cycle to the next debug overlay layout."), Bind(&UCk_DebugOverlay_Subsystem::DoCmd_Layout_Next));
+    _Cmd_Layout_Prev = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.Layout.Prev"),
+        TEXT("Cycle to the previous debug overlay layout."), Bind(&UCk_DebugOverlay_Subsystem::DoCmd_Layout_Prev));
+    _Cmd_UnpinAll = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.UnpinAll"),
+        TEXT("Release all pinned overlay cards."), Bind(&UCk_DebugOverlay_Subsystem::DoCmd_UnpinAll));
+    _Cmd_Help = MakeUnique<FAutoConsoleCommandWithWorld>(TEXT("ck.DebugOverlay.Help"),
+        TEXT("Toggle the full keyboard-hints legend."), Bind(&UCk_DebugOverlay_Subsystem::DoCmd_Help));
+    _Cmd_World = MakeUnique<FAutoConsoleCommandWithWorldAndArgs>(TEXT("ck.DebugOverlay.World"),
+        TEXT("Select this local player's own PIE world by index."),
+        FConsoleCommandWithWorldAndArgsDelegate::CreateLambda(
+            [](const TArray<FString>& InArgs, UWorld* InWorld)
+            {
+                if (auto* Target = UCk_DebugOverlay_Subsystem::Resolve_CommandTarget(InWorld))
+                { Target->DoCmd_World(InArgs, InWorld); }
+            }));
+}
+
+auto
+    UCk_DebugOverlay_Subsystem::
     Deinitialize()
     -> void
 {
@@ -247,13 +266,19 @@ auto
     _Cmd_Prev.Reset();
     _Cmd_Next.Reset();
 
-    // If we owned the CVar callback, remove it to avoid a dangling UObject delegate.
-    // _CVar_Master is a static; it outlives the subsystem.
-    if (_CVar_Master && _bIsPrimaryConsoleOwner)
+    OverlayInstances.RemoveAll([this](const TWeakObjectPtr<UCk_DebugOverlay_Subsystem>& InInstance)
+    { return NOT InInstance.IsValid() || InInstance.Get() == this; });
+    // The static callback owns no UObject, and only remains while local players exist.
+    if (_CVar_Master && OverlayInstances.IsEmpty())
     {
         _CVar_Master->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate{});
     }
     _CVar_Master = nullptr;
+    if (NOT OverlayInstances.IsEmpty())
+    {
+        if (auto* NextOwner = OverlayInstances[0].Get())
+        { NextOwner->Register_ConsoleCommands(); }
+    }
 
     ck::debug_overlay::Log(TEXT("UCk_DebugOverlay_Subsystem deinitialized"));
 
@@ -267,18 +292,17 @@ auto
     -> void
 {
     Super::PlayerControllerChanged(InNewPlayerController);
+    if (_RootWidget.IsValid())
+    { DoDeactivate(); }
     Reset_SelectionSession();
     Register_InputProcessor();
 
     // The master cvar is a process-global static that SURVIVES PIE restarts, but this
     // subsystem is per-LocalPlayer and recreated each session — with the cvar already
-    // at 1 no change event ever fires, so a session started with the overlay left on
-    // sits inactive until the toggle is cycled. Level-trigger here instead: this hook
-    // fires once the world/viewport are up (Initialize is too early — DoActivate needs
-    // the LP's viewport client and does not retry). Primary-gated to match the toggle
-    // path (only the primary instance owns the cvar callback).
-    if (_bIsPrimaryConsoleOwner && ck::IsValid(InNewPlayerController) &&
-        _CVar_Master != nullptr && _CVar_Master->GetValueOnGameThread() != 0)
+    // at 1 no change event ever fires. Level-trigger for every local player when
+    // its controller becomes ready.
+    if (ck::IsValid(InNewPlayerController) && _CVar_Master != nullptr &&
+        _LocalVisibilityOverride.Get(_CVar_Master->GetValueOnGameThread() != 0))
     {
         DoActivate();   // no-op when already active
     }
@@ -286,7 +310,7 @@ auto
 
 auto UCk_DebugOverlay_Subsystem::Register_InputProcessor() -> void
 {
-    if (NOT _bIsPrimaryConsoleOwner || _InputProcessor.IsValid() || NOT FSlateApplication::IsInitialized())
+    if (_InputProcessor.IsValid() || NOT FSlateApplication::IsInitialized())
     { return; }
 
     const auto WeakSubsystem = TWeakObjectPtr<UCk_DebugOverlay_Subsystem>(this);
@@ -308,25 +332,37 @@ auto UCk_DebugOverlay_Subsystem::Register_InputProcessor() -> void
         },
         [WeakSubsystem](const ECkDebugOverlayGlobalInputAction InAction)
         {
-            auto* Subsystem = WeakSubsystem.Get();
-            if (Subsystem == nullptr || Subsystem->_CVar_Master == nullptr)
-            { return; }
-
-            if (InAction == ECkDebugOverlayGlobalInputAction::Deactivate)
-            {
-                if (Subsystem->_CVar_Master->GetValueOnGameThread() != 0)
-                { Subsystem->_CVar_Master->AsVariable()->Set(0, ECVF_SetByConsole); }
-                Subsystem->DoDeactivate();
-                return;
-            }
-            if (Subsystem->_CVar_Master->GetValueOnGameThread() == 0)
-            { Subsystem->_CVar_Master->AsVariable()->Set(1, ECVF_SetByConsole); }
-            Subsystem->DoActivate();
-            if (InAction == ECkDebugOverlayGlobalInputAction::Settings)
-            { Subsystem->DoCmd_Settings(); }
+            if (auto* Subsystem = WeakSubsystem.Get())
+            { Subsystem->Apply_GlobalInputAction(InAction); }
+        },
+        [WeakSubsystem](uint32 InUserIndex)
+        {
+            const auto* Subsystem = WeakSubsystem.Get();
+            const auto* Player = Subsystem != nullptr ? Subsystem->GetLocalPlayer() : nullptr;
+            const auto ControllerId = ck::IsValid(Player) ? Player->GetControllerId() : INDEX_NONE;
+            return ControllerId >= 0 && static_cast<uint32>(ControllerId) == InUserIndex;
         });
     _InputProcessor->SetSelectionBindings(*GetDefault<UCk_DebugOverlay_InputSettings>());
     FSlateApplication::Get().RegisterInputPreProcessor(_InputProcessor.ToSharedRef());
+}
+
+auto
+    UCk_DebugOverlay_Subsystem::
+    Apply_GlobalInputAction(ECkDebugOverlayGlobalInputAction InAction)
+    -> void
+{
+    if (_CVar_Master == nullptr)
+    { return; }
+    if (InAction == ECkDebugOverlayGlobalInputAction::Deactivate)
+    {
+        _LocalVisibilityOverride = false;
+        DoDeactivate();
+        return;
+    }
+    _LocalVisibilityOverride = true;
+    DoActivate();
+    if (InAction == ECkDebugOverlayGlobalInputAction::Settings)
+    { DoCmd_Settings(); }
 }
 
 // ====================================================================================================================
@@ -341,15 +377,21 @@ auto
     if (_RootWidget.IsValid())
     { return; }
 
-    const auto* LocalPlayer = GetLocalPlayer();
+    auto* LocalPlayer = GetLocalPlayer();
     if (ck::Is_NOT_Valid(LocalPlayer))
     {
         ck::debug_overlay::Warning(TEXT("DoActivate: no local player — overlay not shown"));
         return;
     }
 
+    auto* World = LocalPlayer->GetWorld();
+    auto* Controller = ck::IsValid(World) ? LocalPlayer->GetPlayerController(World) : nullptr;
+    if (ck::Is_NOT_Valid(Controller) || NOT Controller->IsLocalController() ||
+        Controller->GetLocalPlayer() != LocalPlayer)
+    { return; }
+
     auto* ViewportClient = LocalPlayer->ViewportClient.Get();
-    if (ck::Is_NOT_Valid(ViewportClient))
+    if (ck::Is_NOT_Valid(ViewportClient) || ViewportClient != World->GetGameViewport())
     {
         ck::debug_overlay::Warning(TEXT("DoActivate: no viewport client — overlay not shown"));
         return;
@@ -361,9 +403,10 @@ auto
     // BATCH-VERIFY: SNew returns TSharedRef; TSharedPtr assignment compiles but confirm
     // that SCkDebugOverlay_Root::Construct takes FArguments correctly.
     _AttachedViewport = ViewportClient;
-    ViewportClient->AddViewportWidgetContent(_RootWidget.ToSharedRef(), OverlayZOrder);
+    _AttachedPlayer = LocalPlayer;
+    ViewportClient->AddViewportWidgetForPlayer(_AttachedPlayer.Get(), _RootWidget.ToSharedRef(), OverlayZOrder);
     _SelectionHud = SNew(SCkDebugOverlay_SelectionHud).Visibility(EVisibility::HitTestInvisible);
-    ViewportClient->AddViewportWidgetContent(_SelectionHud.ToSharedRef(), OverlayZOrder + 1);
+    ViewportClient->AddViewportWidgetForPlayer(_AttachedPlayer.Get(), _SelectionHud.ToSharedRef(), OverlayZOrder + 1);
     Reset_SelectionSession();
 
     // Lazy-create providers (once per subsystem lifetime after the first activation).
@@ -391,22 +434,20 @@ auto
     // across PIE stop/start cycles.
     _History = MakeUnique<FCk_DebugOverlay_History>();
 
-    // The process-lifetime input pre-processor is registered before activation so plain comma
+    // This local player's input pre-processor is registered before activation so plain comma
     // can open the overlay. Refresh its live per-user bindings on every activation.
     Register_InputProcessor();
     if (_InputProcessor.IsValid())
     { _InputProcessor->SetSelectionBindings(*GetDefault<UCk_DebugOverlay_InputSettings>()); }
 
-    // Suppress engine on-screen debug text (AddOnScreenDebugMessage / ck::Trace — same
-    // channel) while the overlay is active: the plate now owns the top-left corner and
-    // the tall height budget. Prior value restored on deactivate. Primary-owner-gated
-    // so split-screen LP subsystems don't double-save (the second save would capture
-    // the already-suppressed 'false' and the restore would stick).
-    if (_bIsPrimaryConsoleOwner && ck::IsValid(GEngine))
+    // All local players share this engine-wide text channel. The first overlay saves
+    // it and the last overlay restores it, independent of console-command ownership.
+    if (ActiveOverlayCount == 0 && ck::IsValid(GEngine))
     {
-        _PriorOnScreenMessagesEnabled = GEngine->bEnableOnScreenDebugMessages;
+        PriorOnScreenMessagesEnabled = GEngine->bEnableOnScreenDebugMessages;
         GEngine->bEnableOnScreenDebugMessages = false;
     }
+    ++ActiveOverlayCount;
 
     // Register the per-frame ticker.
     _TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
@@ -438,10 +479,11 @@ auto
     { _RootWidget->Release_OwnerInteractions(); }
 
     auto* AttachedViewport = _AttachedViewport.Get();
+    auto* AttachedPlayer = _AttachedPlayer.Get();
     if (_SelectionHud.IsValid())
     {
         if (ck::IsValid(AttachedViewport))
-        { AttachedViewport->RemoveViewportWidgetContent(_SelectionHud.ToSharedRef()); }
+        { AttachedViewport->RemoveViewportWidgetForPlayer(AttachedPlayer, _SelectionHud.ToSharedRef()); }
         _SelectionHud.Reset();
     }
     Reset_SelectionSession();
@@ -449,9 +491,11 @@ auto
     // Restore engine on-screen debug text to its pre-activation state. Guarded on the
     // ticker being live so a redundant DoDeactivate (Deinitialize after a cvar-off)
     // doesn't restore twice.
-    if (_bIsPrimaryConsoleOwner && WasActive && ck::IsValid(GEngine))
+    if (WasActive)
     {
-        GEngine->bEnableOnScreenDebugMessages = _PriorOnScreenMessagesEnabled;
+        ActiveOverlayCount = FMath::Max(0, ActiveOverlayCount - 1);
+        if (ActiveOverlayCount == 0 && ck::IsValid(GEngine))
+        { GEngine->bEnableOnScreenDebugMessages = PriorOnScreenMessagesEnabled; }
     }
 
     _PinnedEntities.Reset();
@@ -459,10 +503,11 @@ auto
     if (_RootWidget.IsValid())
     {
         if (ck::IsValid(AttachedViewport))
-        { AttachedViewport->RemoveViewportWidgetContent(_RootWidget.ToSharedRef()); }
+        { AttachedViewport->RemoveViewportWidgetForPlayer(AttachedPlayer, _RootWidget.ToSharedRef()); }
         _RootWidget.Reset();
     }
     _AttachedViewport.Reset();
+    _AttachedPlayer.Reset();
 
     _History.Reset();
 
@@ -504,11 +549,15 @@ auto
     // Ejected PIE (F8): the player camera freezes but the user is flying the editor
     // viewport — hover/focus selection must follow THAT camera.
     auto Viewpoint = ck_debugoverlay::FViewpoint{};
-    auto* PC = World->GetFirstPlayerController();
+    const auto* LocalPlayer = GetLocalPlayer();
+    auto* PC = ck::IsValid(LocalPlayer) && LocalPlayer->GetWorld() == World
+        ? LocalPlayer->GetPlayerController(World) : nullptr;
+    if (ck::Is_NOT_Valid(PC) || PC->GetLocalPlayer() != LocalPlayer)
+    { return true; }
 
     _ViewpointIsEjected = false;
 #if WITH_EDITOR
-    if (auto* LEVC = ck::DebugViewportView::TryGet_LevelEditorViewport())
+    if (auto* LEVC = ck::DebugViewportView::TryGet_LevelEditorViewportForPlayer(World, LocalPlayer))
     {
         Viewpoint.Location  = LEVC->GetViewLocation();
         Viewpoint.Forward   = LEVC->GetViewRotation().Vector();
@@ -705,24 +754,28 @@ auto
     Resolve_ActiveWorld() const
     -> UWorld*
 {
-    // PIE world override via console command.
+    const auto* LocalPlayer = GetLocalPlayer();
+    if (ck::Is_NOT_Valid(LocalPlayer))
+    { return nullptr; }
+    auto* PlayerWorld = LocalPlayer->GetWorld();
+    if (ck::Is_NOT_Valid(PlayerWorld))
+    { return nullptr; }
+
+    // An explicit world override may select only the owning player's world.
     if (_WorldOverrideIndex != INDEX_NONE && ck::IsValid(GEngine))
     {
         const auto& Contexts = GEngine->GetWorldContexts();
         if (_WorldOverrideIndex < Contexts.Num())
         {
             auto* W = Contexts[_WorldOverrideIndex].World();
-            if (ck::IsValid(W))
+            if (W == PlayerWorld)
             { return W; }
+            return nullptr;
         }
+        return nullptr;
     }
 
-    // Default: the local player's own world.
-    const auto* LocalPlayer = GetLocalPlayer();
-    if (ck::Is_NOT_Valid(LocalPlayer))
-    { return nullptr; }
-
-    return LocalPlayer->GetWorld();
+    return PlayerWorld;
 }
 
 auto
@@ -904,8 +957,8 @@ auto
     _RootWidget->Set_PinnedCards(PinnedModels, CardStyle, *_History, InNow);
 
     // ---- World tags (Slate plates anchored at the entity's screen position) ----
-    // ScreenPos comes from ProjectWorldToScreen (raw pixels) divided by the viewport DPI scale
-    // (Slate viewport overlays position children in DPI-scaled units) so each plate lands on
+    // ScreenPos comes from owner-relative ProjectWorldToScreen pixels divided by the viewport
+    // DPI scale (Slate player layers position children in DPI-scaled units) so each plate lands on
     // its diamond marker. The focus entity's plate is highlighted; co-located entities retain
     // their truthful projected anchors and are disambiguated by the selection HUD.
     auto DpiScale = 1.0f;
@@ -920,7 +973,7 @@ auto
     const auto RetainedWorldTagKeys = _RootWidget->Get_AdmittedWorldTagKeys();
     const auto WorldTags = ck_debugoverlay::Build_WorldTags(
         InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected,
-        DpiScale, WorldFocus, &RetainedWorldTagKeys);
+        DpiScale, WorldFocus, &RetainedWorldTagKeys, true);
 
     _RootWidget->Update_WorldTags(WorldTags, InNow);
 
@@ -986,10 +1039,12 @@ auto
 
     if (InVar->GetInt() != 0)
     {
+        _LocalVisibilityOverride.Reset();
         DoActivate();
     }
     else
     {
+        _LocalVisibilityOverride.Reset();
         DoDeactivate();
     }
 }
@@ -1101,10 +1156,11 @@ auto
     if (NumWorlds == 0)
     { return; }
 
+    int32 RequestedIndex = INDEX_NONE;
     if (InArgs[0].Equals(TEXT("next"), ESearchCase::IgnoreCase))
     {
         const auto CurrentIdx = (_WorldOverrideIndex == INDEX_NONE) ? -1 : _WorldOverrideIndex;
-        _WorldOverrideIndex   = (CurrentIdx + 1) % NumWorlds;
+        RequestedIndex = (CurrentIdx + 1) % NumWorlds;
     }
     else
     {
@@ -1115,9 +1171,18 @@ auto
                 TEXT("ck.DebugOverlay.World: index {} out of range [0, {})"), Idx, NumWorlds);
             return;
         }
-        _WorldOverrideIndex = Idx;
+        RequestedIndex = Idx;
     }
 
+    const auto* Player = GetLocalPlayer();
+    const auto* RequestedWorld = Contexts[RequestedIndex].World();
+    if (ck::Is_NOT_Valid(Player) || RequestedWorld != Player->GetWorld())
+    {
+        ck::debug_overlay::Warning(TEXT("ck.DebugOverlay.World: index {} does not belong to this local player"),
+            RequestedIndex);
+        return;
+    }
+    _WorldOverrideIndex = RequestedIndex;
     ck::debug_overlay::Log(TEXT("World override set to index {}"), _WorldOverrideIndex);
 }
 

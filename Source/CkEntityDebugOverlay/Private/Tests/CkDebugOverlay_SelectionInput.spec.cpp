@@ -203,5 +203,36 @@ bool FCkDebugOverlay_SelectionInput_Test::RunTest(const FString&)
     if (DefaultHold.Num() == 1)
     { TestEqual(TEXT("default hold action toggles selection lock"), DefaultHold[0], ECkDebugOverlaySelectionInputAction::ToggleSelectionLock); }
     TestTrue(TEXT("default hold release is consumed"), Input.RouteSelectionKeyUp(EKeys::Comma, 80.5));
+
+    if (TestTrue(TEXT("Slate is available for two-owner input routing"), FSlateApplication::IsInitialized()))
+    {
+        auto FirstInput = FCkDebugOverlay_InputProcessor{
+            {}, [] { return true; }, [] { return false; }, {},
+            [](uint32 InUserIndex) { return InUserIndex == 0; }};
+        auto SecondInput = FCkDebugOverlay_InputProcessor{
+            {}, [] { return true; }, [] { return false; }, {},
+            [](uint32 InUserIndex) { return InUserIndex == 1; }};
+        auto FirstPress = FKeyEvent{EKeys::Comma, FModifierKeysState{}, 0u, false, 0u, 0u};
+        TestTrue(TEXT("first user's shortcut is owned by first input processor"),
+            FirstInput.HandleKeyDownEvent(FSlateApplication::Get(), FirstPress));
+        TestFalse(TEXT("first user's shortcut cannot enter second input processor"),
+            SecondInput.HandleKeyDownEvent(FSlateApplication::Get(), FirstPress));
+        TestEqual(TEXT("first user receives one activation"), FirstInput.ConsumeGlobalActions().Num(), 1);
+        TestEqual(TEXT("second user receives no activation"), SecondInput.ConsumeGlobalActions().Num(), 0);
+
+        auto FirstRelease = FKeyEvent{EKeys::Comma, FModifierKeysState{}, 0u, false, 0u, 0u};
+        TestFalse(TEXT("foreign key-up cannot release second user's input"),
+            SecondInput.HandleKeyUpEvent(FSlateApplication::Get(), FirstRelease));
+        TestTrue(TEXT("first user releases only its captured key"),
+            FirstInput.HandleKeyUpEvent(FSlateApplication::Get(), FirstRelease));
+
+        auto SecondPress = FKeyEvent{EKeys::Comma, FModifierKeysState{}, 1u, false, 0u, 0u};
+        TestFalse(TEXT("second user's shortcut cannot enter first input processor"),
+            FirstInput.HandleKeyDownEvent(FSlateApplication::Get(), SecondPress));
+        TestTrue(TEXT("second user's shortcut is owned by second input processor"),
+            SecondInput.HandleKeyDownEvent(FSlateApplication::Get(), SecondPress));
+        TestEqual(TEXT("first user stays unchanged"), FirstInput.ConsumeGlobalActions().Num(), 0);
+        TestEqual(TEXT("second user receives one activation"), SecondInput.ConsumeGlobalActions().Num(), 1);
+    }
     return true;
 }

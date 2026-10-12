@@ -6,6 +6,7 @@
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 
 #include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
@@ -55,6 +56,20 @@ auto
 
     return TryGet_ActiveLevelEditorViewport();
 }
+
+auto
+    TryGet_LevelEditorViewportForPlayer(
+        UWorld* InWorld, const ULocalPlayer* InPlayer) -> FEditorViewportClient*
+{
+    if (GEditor == nullptr || ck::Is_NOT_Valid(InWorld) || ck::Is_NOT_Valid(InPlayer) ||
+        GEditor->PlayWorld != InWorld || InPlayer->GetWorld() != InWorld)
+    { return nullptr; }
+    const auto* GameInstance = InWorld->GetGameInstance();
+    if (ck::Is_NOT_Valid(GameInstance) || GameInstance->GetNumLocalPlayers() != 1 ||
+        GameInstance->GetLocalPlayerByIndex(0) != InPlayer)
+    { return nullptr; }
+    return TryGet_LevelEditorViewport();
+}
 #endif
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -99,11 +114,20 @@ auto
 auto
     TryGet_Projection(UWorld* InWorld, FProjection& OutProjection) -> bool
 {
+    return TryGet_Projection(InWorld,
+        ck::IsValid(InWorld) ? InWorld->GetFirstLocalPlayerFromController() : nullptr,
+        OutProjection);
+}
+
+auto
+    TryGet_Projection(UWorld* InWorld, const ULocalPlayer* InPlayer,
+        FProjection& OutProjection) -> bool
+{
     OutProjection = FProjection{};
-    if (ck::Is_NOT_Valid(InWorld))
+    if (ck::Is_NOT_Valid(InWorld) || ck::Is_NOT_Valid(InPlayer) || InPlayer->GetWorld() != InWorld)
     { return false; }
 #if WITH_EDITOR
-    if (auto* VC = TryGet_LevelEditorViewport())
+    if (auto* VC = TryGet_LevelEditorViewportForPlayer(InWorld, InPlayer))
     {
         if (VC->Viewport == nullptr || VC->IsOrtho())
         { return false; }
@@ -121,14 +145,13 @@ auto
         return true;
     }
 #endif
-    auto* LocalPlayer = InWorld->GetFirstLocalPlayerFromController();
     auto* ViewportClient = InWorld->GetGameViewport();
-    if (ck::Is_NOT_Valid(LocalPlayer) || ck::Is_NOT_Valid(ViewportClient))
+    if (ck::Is_NOT_Valid(ViewportClient) || InPlayer->ViewportClient.Get() != ViewportClient)
     { return false; }
     if (ViewportClient->Viewport == nullptr)
     { return false; }
     auto Data = FSceneViewProjectionData{};
-    if (NOT LocalPlayer->GetProjectionData(ViewportClient->Viewport, Data))
+    if (NOT InPlayer->GetProjectionData(ViewportClient->Viewport, Data))
     { return false; }
     OutProjection.ViewProjection = Data.ComputeViewProjectionMatrix();
     OutProjection.ViewRect = Data.GetConstrainedViewRect();
@@ -156,19 +179,31 @@ auto
 {
     if (ck::Is_NOT_Valid(InEntity))
     { return false; }
+    auto* World = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(InEntity);
+    return Get_IsLocalPlayerSelf(InEntity,
+        ck::IsValid(World) ? World->GetFirstPlayerController() : nullptr);
+}
 
-    if (Get_IsEjected())
+auto
+    Get_IsLocalPlayerSelf(
+        const FCk_Handle& InEntity, const APlayerController* InController) -> bool
+{
+    if (ck::Is_NOT_Valid(InEntity) || ck::Is_NOT_Valid(InController))
     { return false; }
 
     auto* World = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(InEntity);
     if (ck::Is_NOT_Valid(World))
     { return false; }
 
-    auto* PC = World->GetFirstPlayerController();
-    if (ck::Is_NOT_Valid(PC))
+#if WITH_EDITOR
+    if (TryGet_LevelEditorViewportForPlayer(World, InController->GetLocalPlayer()))
+    { return false; }
+#endif
+
+    if (InController->GetWorld() != World || ck::Is_NOT_Valid(InController->GetLocalPlayer()))
     { return false; }
 
-    auto* LocalPawn = PC->GetPawn().Get();
+    auto* LocalPawn = InController->GetPawn().Get();
     if (ck::Is_NOT_Valid(LocalPawn))
     { return false; }
 
@@ -176,7 +211,7 @@ auto
     if (ck::Is_NOT_Valid(OwningActor))
     { return false; }
 
-    if (OwningActor == LocalPawn || OwningActor == PC)
+    if (OwningActor == LocalPawn || OwningActor == InController)
     { return true; }
 
     return OwningActor->IsAttachedTo(LocalPawn);

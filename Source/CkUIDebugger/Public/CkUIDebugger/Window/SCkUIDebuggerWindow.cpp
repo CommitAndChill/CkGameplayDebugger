@@ -151,42 +151,38 @@ namespace ck_ui_debugger
         }
     }
 
-    static auto FindLayoutSubsystem() -> UCk_UI_Layout_Subsystem_UE*
+    static auto FindLayoutSubsystemInWorld(UWorld* InWorld) -> UCk_UI_Layout_Subsystem_UE*
     {
-        if (NOT GEngine)
+        if (ck::Is_NOT_Valid(InWorld)
+            || (InWorld->WorldType != EWorldType::Game && InWorld->WorldType != EWorldType::PIE))
         { return nullptr; }
 
+        UGameInstance* GameInstance = InWorld->GetGameInstance();
+        if (ck::Is_NOT_Valid(GameInstance)) { return nullptr; }
+        const auto& LocalPlayers = GameInstance->GetLocalPlayers();
+        if (LocalPlayers.IsEmpty() || ck::Is_NOT_Valid(LocalPlayers[0])) { return nullptr; }
+
+        auto* LayoutSubsystem = LocalPlayers[0]->GetSubsystem<UCk_UI_Layout_Subsystem_UE>();
+        return ck::IsValid(LayoutSubsystem) && LayoutSubsystem->Has_Layout()
+            ? LayoutSubsystem : nullptr;
+    }
+
+    static auto FindLayoutSubsystem(const FCkUIDebugger_WorldSelector& InTargetWorld)
+        -> UCk_UI_Layout_Subsystem_UE*
+    {
+        // An explicit selector is authoritative, including while the selected PIE world is absent.
+        // Never bind another local player's layout while waiting for the requested world.
+        if (InTargetWorld.IsBound())
+        {
+            const TWeakObjectPtr<UWorld> TargetWorld = InTargetWorld.Execute();
+            return FindLayoutSubsystemInWorld(TargetWorld.Get());
+        }
+        if (NOT GEngine) { return nullptr; }
         for (const auto& Context : GEngine->GetWorldContexts())
         {
-            auto* World = Context.World();
-
-            if (ck::Is_NOT_Valid(World))
-            { continue; }
-
-            if (World->WorldType != EWorldType::Game && World->WorldType != EWorldType::PIE)
-            { continue; }
-
-            auto* GameInstance = World->GetGameInstance();
-
-            if (ck::Is_NOT_Valid(GameInstance))
-            { continue; }
-
-            const auto& LocalPlayers = GameInstance->GetLocalPlayers();
-
-            if (LocalPlayers.IsEmpty())
-            { continue; }
-
-            auto* LocalPlayer = LocalPlayers[0];
-
-            if (ck::Is_NOT_Valid(LocalPlayer))
-            { continue; }
-
-            auto* LayoutSubsystem = LocalPlayer->GetSubsystem<UCk_UI_Layout_Subsystem_UE>();
-
-            if (ck::IsValid(LayoutSubsystem) && LayoutSubsystem->Has_Layout())
+            if (auto* LayoutSubsystem = FindLayoutSubsystemInWorld(Context.World()))
             { return LayoutSubsystem; }
         }
-
         return nullptr;
     }
 }
@@ -222,6 +218,7 @@ auto
     -> void
 {
     Register_WithGate();
+    _TargetWorldSelector = InArgs._TargetWorld;
 
     _LayerHost = SNew(SBox);
     _HistoryHost = SNew(SBox);
@@ -291,7 +288,7 @@ auto
 
     // ---- Resolve layout subsystem (PIE may start/stop) ----
 
-    auto* LayoutSubsystem = ck_ui_debugger::FindLayoutSubsystem();
+    auto* LayoutSubsystem = ck_ui_debugger::FindLayoutSubsystem(_TargetWorldSelector);
     auto* Layout = ck::IsValid(LayoutSubsystem)
         ? LayoutSubsystem->Get_Layout()
         : static_cast<UCk_UI_PrimaryGameLayout_UE*>(nullptr);
