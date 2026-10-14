@@ -303,9 +303,39 @@ auto
             { Window->DoSelect_LegAt(InLegIndex); }
         });
 
+    _LimbControls = SNew(SCkDebug_EvidenceList).MaxItems(64)
+        .EmptyText(FText::FromString(TEXT("No articulated limbs in this selection.")));
+    _ActionStreams = SNew(SCkDebug_EvidenceList).MaxItems(256)
+        .EmptyText(FText::FromString(TEXT("No retained action streams.")))
+        .OnSelectionChanged_Lambda([WeakModel](int32 InIndex)
+        {
+            const auto Model = WeakModel.Pin();
+            if (Model.IsValid() && Model->Get_ActionStreams().IsValidIndex(InIndex))
+            { Model->Request_SelectAction(Model->Get_ActionStreams()[InIndex]); }
+        });
+    _ActionRecords = SNew(SCkDebug_EvidenceList).MaxItems(128)
+        .EmptyText(FText::FromString(TEXT("Select an action stream. Capture copies observations without consuming them.")))
+        .OnSelectionChanged_Lambda([WeakWindow](int32 InIndex)
+        {
+            const auto Window = WeakWindow.Pin();
+            if (Window.IsValid() && Window->_Model->Get_ActionRecording().Get_Records().IsValidIndex(InIndex))
+            {
+                Window->_SelectedActionRecord = InIndex;
+                Window->DoRefresh_Presentation();
+            }
+        });
+
     _Viewport = SNew(SCkDebug_3dPreviewViewport).Descriptor(FCkDebug3dPreviewDescriptor{}).Adapter(_Preview)
         .SafeAreaOverlay(SNew(SCkDebug_SelectableLabel)
-            .Text(FText::FromString(TEXT("Recorded diagnostic rig · goal cubes · actual probe rays / normals · selected leg's foothold candidates"))));
+            .Text_Lambda([WeakWindow]()
+            {
+                const auto Window = WeakWindow.Pin();
+                const auto ActionView = Window.IsValid() && (Window->_SelectedActionRecord != INDEX_NONE
+                    || Window->_Model->Get_History().Get_Displayed() == nullptr);
+                return FText::FromString(ActionView
+                    ? TEXT("Copied accepted action pose · recorded channels only · requested-to-accepted endpoint error")
+                    : TEXT("Recorded diagnostic rig · goal cubes · actual probe rays / normals · selected leg's foothold candidates"));
+            }));
     _Preview->Initialize(_Viewport->Get_PreviewWorld());
     _PreviewSelectedHandle = _Preview->Get_OnLegSelected().AddRaw(this, &SCkProceduralAnimationDebuggerWindow::DoSelect_Leg);
     _TimelineHost = SNew(SBox).MinDesiredHeight(120.0f);
@@ -315,7 +345,7 @@ auto
         [SNew(SCkDebug_WorldSelector, _WorldModel)]
         + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceM, 0.0f)
         [SNew(SCkDebug_IconToggle).Tag(TEXT("ProceduralAnimation.Hold")).IconId(ECk_Icon::Recording)
-            .Label(FText::FromString(TEXT("Hold"))).ShowLabel(true)
+            .Label(FText::FromString(TEXT("Hold gait"))).ShowLabel(true)
             .ToolTip(FText::FromString(TEXT("Hold the inspected sample; gameplay and bounded recording continue.")))
             .IsOn_Lambda([WeakModel]()
             {
@@ -336,10 +366,16 @@ auto
         + SHorizontalBox::Slot().AutoWidth()
         [SNew(SButton).Tag(TEXT("ProceduralAnimation.Live")).Text(FText::FromString(TEXT("Live")))
             .ToolTipText(FText::FromString(TEXT("Show the newest recorded sample.")))
-            .OnClicked_Lambda([WeakModel]()
+            .OnClicked_Lambda([WeakModel, WeakWindow]()
             {
                 if (const auto Model = WeakModel.Pin())
                 { Model->Request_GoLive(); }
+                if (const auto Window = WeakWindow.Pin())
+                {
+                    Window->_SelectedActionRecord = INDEX_NONE;
+                    Window->_ActionPageStart = INDEX_NONE;
+                    Window->DoRefresh_Presentation();
+                }
                 return FReply::Handled();
             })]
         + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceM, 0.0f)
@@ -354,7 +390,7 @@ auto
 
     const auto Sidebar = SNew(SVerticalBox)
         + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
-        [SNew(SCkDebug_SearchBar).HintText(FText::FromString(TEXT("Filter gait entities")))
+        [SNew(SCkDebug_SearchBar).HintText(FText::FromString(TEXT("Filter procedural subjects")))
             .OnSearchTextChanged_Lambda([WeakWindow](const FString& InText)
             {
                 const auto Window = WeakWindow.Pin();
@@ -381,7 +417,63 @@ auto
             [SNew(SCkDebug_PaneHost)
                 [SNew(SVerticalBox)
                     + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(CkStyle::SpaceS)[DoBuild_LegActions()]
-                    + SVerticalBox::Slot().FillHeight(1.0f)[_Legs.ToSharedRef()]]]]
+                    + SVerticalBox::Slot().FillHeight(1.0f)[_Legs.ToSharedRef()]
+                    + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
+                    [SNew(SCkDebug_SelectableLabel).Text_Lambda([WeakModel]()
+                    {
+                        const auto Model = WeakModel.Pin();
+                        return FText::FromString(Model.IsValid() && Model->Get_SelectedGone()
+                            ? TEXT("Limb control · last observed before subject destruction")
+                            : TEXT("Limb control · latest observation"));
+                    })]
+                    + SVerticalBox::Slot().FillHeight(0.7f)[_LimbControls.ToSharedRef()]]]]
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
+        [SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().FillWidth(1.0f)
+            [SNew(SCkDebug_SelectableLabel).Text_Lambda([WeakWindow]()
+            {
+                const auto Window = WeakWindow.Pin();
+                return Window.IsValid() ? Window->DoGet_ActionText() : FText{};
+            })]
+            + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceS, 0.0f)
+            [SNew(SButton).Tag(TEXT("ProceduralAnimation.ActionOlder")).Text(FText::FromString(TEXT("Older")))
+                .IsEnabled_Lambda([WeakWindow]()
+                {
+                    const auto Window = WeakWindow.Pin();
+                    return Window.IsValid() && NOT Window->_Released && Window->DoGet_FirstActionRecord() > 0;
+                })
+                .OnClicked_Lambda([WeakWindow]()
+                {
+                    if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_Released)
+                    {
+                        Window->_ActionPageStart = FMath::Max(0, Window->DoGet_FirstActionRecord() - 128);
+                        Window->DoRefresh_Actions();
+                    }
+                    return FReply::Handled();
+                })]
+            + SHorizontalBox::Slot().AutoWidth()
+            [SNew(SButton).Tag(TEXT("ProceduralAnimation.ActionNewer")).Text(FText::FromString(TEXT("Newer")))
+                .IsEnabled_Lambda([WeakWindow]()
+                {
+                    const auto Window = WeakWindow.Pin();
+                    return Window.IsValid() && NOT Window->_Released
+                        && Window->DoGet_FirstActionRecord() + 128 < Window->_Model->Get_ActionRecording().Get_Records().Num();
+                })
+                .OnClicked_Lambda([WeakWindow]()
+                {
+                    if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_Released)
+                    {
+                        const auto Next = Window->DoGet_FirstActionRecord() + 128;
+                        Window->_ActionPageStart = Next + 128 >= Window->_Model->Get_ActionRecording().Get_Records().Num()
+                            ? INDEX_NONE : Next;
+                        Window->DoRefresh_Actions();
+                    }
+                    return FReply::Handled();
+                })]]
+        + SVerticalBox::Slot().FillHeight(0.65f)
+        [SNew(SSplitter)
+            + SSplitter::Slot().Value(0.25f)[SNew(SCkDebug_PaneHost)[_ActionStreams.ToSharedRef()]]
+            + SSplitter::Slot().Value(0.75f)[SNew(SCkDebug_PaneHost)[_ActionRecords.ToSharedRef()]]]
         + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
         [SNew(SHorizontalBox)
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -567,8 +659,29 @@ auto
     { _WorldModel->Set_SelectedWorld(_Model->Get_World()); }
 
     DoRefresh_Roster();
+    DoRefresh_Actions();
 
     const auto* Sample = _Model->Get_History().Get_Displayed();
+    const auto& Records = _Model->Get_ActionRecording().Get_Records();
+    if (Sample == nullptr || _SelectedActionRecord != INDEX_NONE)
+    {
+        auto RecordIndex = Records.IsValidIndex(_SelectedActionRecord) ? _SelectedActionRecord : Records.Num() - 1;
+        while (RecordIndex >= 0 && NOT Records[RecordIndex].Get_Receipt().Get_HasAcceptedPose())
+        { --RecordIndex; }
+        if (RecordIndex >= 0)
+        {
+            _Preview->ShowAction(Records[RecordIndex].Get_Receipt().Get_CurrentPose());
+            const auto Identity = FString::Printf(TEXT("Action.%lld"), _Model->Get_ActionRecording().Get_Identity().Get_Value());
+            if (_FramedEntity != Identity)
+            {
+                _FramedEntity = Identity;
+                _Viewport->Apply_CameraPreset(ECkDebug3dCameraPreset::FrameAll);
+            }
+            if (Sample == nullptr)
+            { _Legs->Clear_Items(); }
+            return;
+        }
+    }
     if (Sample == nullptr)
     {
         _Legs->Clear_Items();
@@ -604,16 +717,22 @@ auto
         if (NOT _Filter.IsEmpty() && NOT Row.Label.Contains(_Filter) && NOT Summary.Get_EntityId().Contains(_Filter))
         { continue; }
 
-        const auto Failed = Summary.Get_GaitStatus() == ECk_ProceduralAnimation_Status::Failed
+        const auto Failed = (Summary.Get_HasGait() && Summary.Get_GaitStatus() == ECk_ProceduralAnimation_Status::Failed)
+            || (Summary.Get_HasArticulation() && Summary.Get_ArticulationStatus() == ECk_ProceduralAnimation_Status::Failed)
             || (Summary.Get_HasRig() && Summary.Get_RigStatus() == ECk_ProceduralAnimation_Status::Failed);
-        const auto Tracking = Summary.Get_GaitStatus() == ECk_ProceduralAnimation_Status::Ready;
+        const auto Tracking = Summary.Get_HasGait()
+            ? Summary.Get_GaitStatus() == ECk_ProceduralAnimation_Status::Ready
+            : Summary.Get_ArticulationStatus() == ECk_ProceduralAnimation_Status::Ready;
         auto Item = FCkDebug_EntityHealthItem{};
         Item.RowIdentity = Row.Entity;
         Item.SelectionTarget = Row.Entity;
         Item.Name = FText::FromString(Row.Label);
         Item.Context = FText::FromString(Summary.Get_EntityId());
-        Item.Summary = FText::FromString(ck::Format_UE(TEXT("{} legs ({} attached, {} enabled) · {} planted"),
-            Summary.Get_LegCount(), Summary.Get_AttachedLegCount(), Summary.Get_EnabledLegCount(), Summary.Get_PlantedCount()));
+        Item.Summary = FText::FromString(Summary.Get_HasGait()
+            ? ck::Format_UE(TEXT("{} legs ({} attached, {} enabled) · {} planted"),
+                Summary.Get_LegCount(), Summary.Get_AttachedLegCount(), Summary.Get_EnabledLegCount(), Summary.Get_PlantedCount())
+            : ck::Format_UE(TEXT("{} dedicated limbs · {}"), Summary.Get_LimbCount(),
+                Summary.Get_HasPlayer() ? TEXT("action player") : TEXT("articulation")));
         Item.Status = FText::FromString(Failed ? TEXT("Failed") : Tracking ? TEXT("Tracking") : TEXT("Pending"));
         Item.Tone = Failed ? ECk_Tone::Err : Tracking ? ECk_Tone::Ok : ECk_Tone::Warn;
         Items.Add(MoveTemp(Item));
@@ -623,6 +742,141 @@ auto
     CK_ENSURE_IF_NOT(RosterAccepted,
         TEXT("Procedural animation roster rejected its rows (an invalid or duplicated entity); the roster is cleared."))
     { _Roster->Clear_Items(); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkProceduralAnimationDebuggerWindow::
+    DoGet_FirstActionRecord() const
+    -> int32
+{
+    const auto Count = _Model->Get_ActionRecording().Get_Records().Num();
+    return _ActionPageStart == INDEX_NONE ? FMath::Max(0, Count - 128)
+        : FMath::Clamp(_ActionPageStart, 0, FMath::Max(0, Count - 1));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkProceduralAnimationDebuggerWindow::
+    DoRefresh_Actions()
+    -> void
+{
+    auto Streams = TArray<FCkDebug_EvidenceItem>{};
+    const auto& Recording = _Model->Get_ActionRecording();
+    if (_DisplayedActionIdentity != Recording.Get_Identity().Get_Value())
+    {
+        _DisplayedActionIdentity = Recording.Get_Identity().Get_Value();
+        _SelectedActionRecord = INDEX_NONE;
+        _ActionPageStart = INDEX_NONE;
+    }
+    for (auto Index = 0; Index < _Model->Get_ActionStreams().Num(); ++Index)
+    {
+        const auto Identity = _Model->Get_ActionStreams()[Index];
+        auto Item = FCkDebug_EvidenceItem{};
+        Item.Key = FString::Printf(TEXT("Action.%lld"), Identity.Get_Value());
+        Item.Source = FText::FromString(Item.Key);
+        const auto Selected = Identity.Get_Value() == Recording.Get_Identity().Get_Value();
+        Item.Headline = FText::FromString(NOT Selected ? TEXT("Retained stream")
+            : NOT Recording.Get_LastError().IsEmpty() ? TEXT("Capture stopped")
+            : Recording.Get_Terminal() ? TEXT("Publication ended") : TEXT("Capturing"));
+        Item.CopyText = Item.Key;
+        Item.SelectionId = Index;
+        Streams.Add(MoveTemp(Item));
+    }
+    _ActionStreams->Set_Items(MoveTemp(Streams));
+
+    auto Records = TArray<FCkDebug_EvidenceItem>{};
+    const auto& Copied = Recording.Get_Records();
+    const auto First = DoGet_FirstActionRecord();
+    const auto Last = FMath::Min(Copied.Num(), First + 128);
+    for (auto Index = First; Index < Last; ++Index)
+    {
+        const auto& Record = Copied[Index];
+        const auto& Receipt = Record.Get_Receipt();
+        const auto& Stamp = Receipt.Get_Stamp();
+        const auto& Interval = Receipt.Get_Interval();
+        auto Item = FCkDebug_EvidenceItem{};
+        Item.Key = FString::Printf(TEXT("%lld.%lld"), Record.Get_Identity().Get_Value(), Record.Get_StreamSequence());
+        Item.Source = FText::FromString(ck::Format_UE(TEXT("#{} · {}"), Record.Get_StreamSequence(), Record.Get_Kind()));
+        auto Detail = FString{};
+        if (Record.Get_Kind() == ECk_ProceduralAction_RecordKind::AcceptedPose)
+        {
+            Item.Headline = FText::FromString(ck::Format_UE(TEXT("{} · {:.3f} → {:.3f}s · {}"),
+                Interval.Get_PhaseId(), Interval.Get_FromTime().Get_Seconds(), Interval.Get_ToTime().Get_Seconds(),
+                Interval.Get_Continuity()));
+            Detail = ck::Format_UE(TEXT("sample {} · subject {} · topology {} · content {}\n{} evaluated / {} accepted; {:.3f} cm / {:.3f} deg; backlog {:.3f}s"),
+                Stamp.Get_SampleSequence(), Stamp.Get_SubjectPoseRevision(), Stamp.Get_TopologyRevision(),
+                Stamp.Get_ContentRevision(), Receipt.Get_Sampling().Get_EvaluatedSamples(),
+                Receipt.Get_Sampling().Get_AcceptedSamples(), Receipt.Get_Sampling().Get_MaxEndpointTravelCm(),
+                Receipt.Get_Sampling().Get_MaxSegmentAngularStepDegrees(), Receipt.Get_Sampling().Get_Backlog().Get_Seconds());
+            for (const auto Window : Interval.Get_Windows())
+            { Detail += ck::Format_UE(TEXT("\nwindow {}"), Window); }
+            for (const auto& Event : Interval.Get_Events())
+            { Detail += ck::Format_UE(TEXT("\nevent {} {} @ {:.3f}s"), Event.Get_Kind(), Event.Get_Id(), Event.Get_Time().Get_Seconds()); }
+            for (const auto& Limb : Receipt.Get_CurrentPose().Get_Limbs())
+            {
+                Detail += ck::Format_UE(TEXT("\n{}: endpoint {} · error {:.3f} cm · {} · contact {}"),
+                    Limb.Get_Id(), Limb.Get_AcceptedEndpoint().GetLocation().ToString(), Limb.Get_EndpointErrorCm(),
+                    Limb.Get_ChainState(), Limb.Get_ContactEvidence());
+            }
+            Item.Tone = Interval.Get_Continuity() == ECk_ProceduralAction_Continuity::Continuous ? ECk_Tone::Ok : ECk_Tone::Warn;
+        }
+        else if (Record.Get_Kind() == ECk_ProceduralAction_RecordKind::WindowsClosed)
+        {
+            Item.Headline = FText::FromString(TEXT("Windows closed"));
+            for (const auto Window : Record.Get_ClosedWindowIds())
+            { Detail += Window.ToString() + TEXT(" "); }
+        }
+        else
+        {
+            Item.Headline = FText::FromString(ck::Format_UE(TEXT("{} · recovery {}"),
+                Record.Get_Result().Get_Outcome(), Record.Get_Result().Get_Recovery()));
+        }
+        Item.Detail = FText::FromString(Detail);
+        Item.CopyText = Item.Source.ToString() + TEXT("\n") + Item.Headline.ToString() + TEXT("\n") + Detail;
+        Item.SelectionId = Index;
+        Records.Add(MoveTemp(Item));
+    }
+    _ActionRecords->Set_Items(MoveTemp(Records));
+
+    auto Controls = TArray<FCkDebug_EvidenceItem>{};
+    for (const auto& Control : _Model->Get_LimbControls())
+    {
+        auto Item = FCkDebug_EvidenceItem{};
+        Item.Key = Control.Get_LimbId().ToString();
+        Item.Source = FText::FromName(Control.Get_LimbId());
+        Item.Headline = FText::FromString(ck::Format_UE(TEXT("{} · generation {}"), Control.Get_State(), Control.Get_Generation()));
+        Item.Detail = FText::FromString(ck::Format_UE(
+            TEXT("{} · owner {} · gait participation {} · trusted support {} · {}"),
+            Control.Get_Locomotor() ? TEXT("Locomotor") : TEXT("Dedicated"),
+            Control.Get_OwnerId().IsEmpty() ? TEXT("none") : Control.Get_OwnerId(),
+            Control.Get_Participating(), Control.Get_TrustedSupport(), Control.Get_Reason()));
+        Item.CopyText = Item.Source.ToString() + TEXT("\n") + Item.Headline.ToString() + TEXT("\n") + Item.Detail.ToString();
+        Controls.Add(MoveTemp(Item));
+    }
+    _LimbControls->Set_Items(MoveTemp(Controls));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkProceduralAnimationDebuggerWindow::
+    DoGet_ActionText() const
+    -> FText
+{
+    if (NOT _Model.IsValid())
+    { return {}; }
+    const auto& Recording = _Model->Get_ActionRecording();
+    return FText::FromString(ck::Format_UE(
+        TEXT("Action {} · records {}–{} of {} · {} gaps · {} · {}{}"),
+        Recording.Get_Identity().Get_Value(), Recording.Get_Records().IsEmpty() ? 0 : DoGet_FirstActionRecord() + 1,
+        FMath::Min(Recording.Get_Records().Num(), DoGet_FirstActionRecord() + 128),
+        Recording.Get_Records().Num(), Recording.Get_Gaps().Num(),
+        Recording.Get_LastReadResult(), NOT Recording.Get_LastError().IsEmpty() ? TEXT("capture stopped")
+            : Recording.Get_Terminal() ? TEXT("publication ended") : TEXT("observing"),
+        Recording.Get_LastError().IsEmpty() ? FString{} : TEXT(" · ") + Recording.Get_LastError()));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -922,7 +1176,7 @@ auto
     if (_Released || NOT _Model.IsValid())
     { return FText::FromString(TEXT("Released")); }
 
-    return FText::FromString(ck::Format_UE(TEXT("{} gait entities · {} / {} samples · {}{}"),
+    return FText::FromString(ck::Format_UE(TEXT("{} procedural subjects · {} / {} gait samples · {}{}"),
         _Model->Get_Rows().Num(), _Model->Get_History().Get_Count(), _Model->Get_History().Get_Capacity(),
         _Model->Get_History().Get_IsLive() ? TEXT("Live") : TEXT("Held"),
         _Model->Get_SelectedGone() ? TEXT(" · entity gone, history retained") : TEXT("")));
@@ -937,7 +1191,7 @@ auto
 {
     const auto* Sample = _Model.IsValid() ? _Model->Get_History().Get_Displayed() : nullptr;
     if (Sample == nullptr)
-    { return FText::FromString(TEXT("Select a gait entity. Capture starts when its first accepted solve is observed.")); }
+    { return FText::FromString(TEXT("Select a procedural subject. Gait history and action receipt evidence are captured independently.")); }
 
     const auto* Status = _Model->Get_History().Get_IsLive() ? _Model->Get_LiveStatus() : Sample;
     const auto Detail = ck::Format_UE(TEXT("{} · t {:.3f}s · sample {} · cadence {:.2f}x · rays {}/solve · {}{}"),
@@ -979,6 +1233,12 @@ auto
 
     if (_Legs.IsValid())
     { _Legs->Clear_Items(); }
+    if (_ActionStreams.IsValid())
+    { _ActionStreams->Clear_Items(); }
+    if (_ActionRecords.IsValid())
+    { _ActionRecords->Clear_Items(); }
+    if (_LimbControls.IsValid())
+    { _LimbControls->Clear_Items(); }
 
     if (_WorldModel.IsValid())
     { _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }

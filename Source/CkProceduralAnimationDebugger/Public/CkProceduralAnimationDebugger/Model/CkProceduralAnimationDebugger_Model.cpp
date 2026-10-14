@@ -8,6 +8,8 @@
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 
 #include "CkProceduralAnimation/Leg/CkProceduralLeg_Utils.h"
+#include "CkProceduralAnimation/ActionPlayer/CkProceduralActionPlayer_Utils.h"
+#include "CkProceduralAnimation/Gait/CkProceduralGait_Utils.h"
 
 #include <Engine/World.h>
 
@@ -145,6 +147,11 @@ auto
     if (_SelectedId != Row->Summary.Get_EntityId())
     {
         _History.Reset();
+        _LiveSnapshot.Reset();
+        _ActionStreams.Reset();
+        _LimbControls.Reset();
+        _ActionRecording.Reset({}, {});
+        _ActionRecordingStopped = false;
         ++_HistoryRevision;
         _SelectedId = Row->Summary.Get_EntityId();
         _SelectedLegId.Reset();
@@ -358,6 +365,10 @@ auto
     _Rows.Reset();
     _LiveSnapshot.Reset();
     _History.Reset();
+    _ActionStreams.Reset();
+    _LimbControls.Reset();
+    _ActionRecording.Reset({}, {});
+    _ActionRecordingStopped = false;
     ++_HistoryRevision;
     _SelectedId.Reset();
     _SelectedLegId.Reset();
@@ -384,11 +395,99 @@ auto
         return;
     }
 
+    auto Controls = FCkProceduralAnimationDebugger_DataCollector::Collect_LimbControls(Row->Entity);
+    if (Controls != _LimbControls)
+    {
+        _LimbControls = MoveTemp(Controls);
+        ++_HistoryRevision;
+    }
+    DoCapture_Actions(Row->Entity);
+    if (NOT Row->Summary.Get_HasGait())
+    {
+        _LiveSnapshot.Reset();
+        return;
+    }
+
     auto Snapshot = UCk_Utils_ProceduralAnimation_Debug_UE::Get_Snapshot(Row->Entity);
     if (_History.Push(Snapshot))
     { ++_HistoryRevision; }
 
     _LiveSnapshot = MoveTemp(Snapshot);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkProceduralAnimationDebugger_Model::
+    Request_SelectAction(
+        FCk_ProceduralAction_Identity InIdentity)
+    -> bool
+{
+    if (_Released || NOT _ActionStreams.ContainsByPredicate([InIdentity](const auto& InCandidate)
+        { return InCandidate.Get_Value() == InIdentity.Get_Value(); }))
+    { return false; }
+    if (_ActionRecording.Get_Identity().Get_Value() == InIdentity.Get_Value())
+    { return true; }
+
+    DoSelect_Action(InIdentity);
+    _OnChanged.Broadcast();
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkProceduralAnimationDebugger_Model::
+    DoSelect_Action(
+        FCk_ProceduralAction_Identity InIdentity)
+    -> void
+{
+    auto Provenance = FCk_ProceduralActionRecordedStore::FProvenance{};
+    Provenance.Set_Fixture(_SelectedId);
+    Provenance.Set_InputDescription(TEXT("Live public receipt stream; gameplay may consume records before capture."));
+    _ActionRecording.Reset(InIdentity, MoveTemp(Provenance));
+    _ActionRecordingStopped = false;
+    ++_HistoryRevision;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkProceduralAnimationDebugger_Model::
+    DoCapture_Actions(
+        const FCk_Handle& InSubject)
+    -> void
+{
+    if (NOT UCk_Utils_ProceduralActionPlayer_UE::Has(InSubject))
+    { return; }
+
+    const auto Player = UCk_Utils_ProceduralActionPlayer_UE::CastChecked(InSubject);
+    auto Streams = UCk_Utils_ProceduralActionPlayer_UE::Get_RetainedReceiptIdentities(Player);
+    auto Changed = Streams.Num() != _ActionStreams.Num();
+    if (NOT Changed)
+    {
+        for (auto Index = 0; Index < Streams.Num(); ++Index)
+        { Changed |= Streams[Index].Get_Value() != _ActionStreams[Index].Get_Value(); }
+    }
+    _ActionStreams = MoveTemp(Streams);
+    if (Changed)
+    { ++_HistoryRevision; }
+
+    if (_ActionRecording.Get_Identity().Get_Value() <= 0 && NOT _ActionStreams.IsEmpty())
+    { DoSelect_Action(_ActionStreams.Last()); }
+    if (_ActionRecording.Get_Identity().Get_Value() <= 0 || _ActionRecordingStopped)
+    { return; }
+
+    // One bounded page for the selected stream per refresh. Reading never consumes gameplay receipts.
+    const auto Page = UCk_Utils_ProceduralActionPlayer_UE::Read_Receipts(Player,
+        _ActionRecording.Get_Identity(), _ActionRecording.Get_LastCopiedSequence(), 64);
+    const auto BeforeSequence = _ActionRecording.Get_LastCopiedSequence();
+    const auto BeforeResult = _ActionRecording.Get_LastReadResult();
+    const auto BeforeTerminal = _ActionRecording.Get_Terminal();
+    _ActionRecordingStopped = NOT _ActionRecording.AppendPage(Page);
+    if (_ActionRecordingStopped || BeforeSequence != _ActionRecording.Get_LastCopiedSequence()
+        || BeforeResult != _ActionRecording.Get_LastReadResult() || BeforeTerminal != _ActionRecording.Get_Terminal())
+    { ++_HistoryRevision; }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

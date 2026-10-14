@@ -4,6 +4,7 @@
 #include "CkProceduralAnimationDebugger/Data/CkProceduralAnimationDebugger_History.h"
 
 #include "CkProceduralAnimation/Leg/CkProceduralLeg_Fragment_Data.h"
+#include "CkProceduralAnimation/Action/CkProceduralAction_RecordedStore.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -37,6 +38,10 @@ public:
     auto Get_Rows() const -> const TArray<FCkProceduralAnimationDebugger_Row>& { return _Rows; }
     auto Get_History() const -> const FCkProceduralAnimationDebugger_History& { return _History; }
     auto Get_HistoryRevision() const -> uint64 { return _HistoryRevision; }
+    auto Get_ActionStreams() const -> const TArray<FCk_ProceduralAction_Identity>& { return _ActionStreams; }
+    auto Get_LimbControls() const -> const TArray<FCkProceduralAnimationDebugger_LimbControl>& { return _LimbControls; }
+    auto Get_ActionRecording() const -> const FCk_ProceduralActionRecordedStore& { return _ActionRecording; }
+    auto Request_SelectAction(FCk_ProceduralAction_Identity InIdentity) -> bool;
     auto Get_SelectedHandle() const -> FCk_Handle;
     auto Get_SelectedGone() const -> bool { return _SelectedGone; }
     auto Get_SelectedId() const -> const FString& { return _SelectedId; }
@@ -58,6 +63,8 @@ public:
 private:
     auto DoClear() -> void;
     auto DoCapture_Selected() -> void;
+    auto DoCapture_Actions(const FCk_Handle& InSubject) -> void;
+    auto DoSelect_Action(FCk_ProceduralAction_Identity InIdentity) -> void;
     auto HandleSelection(const FCk_Handle& InEntity, FName InSource) -> void;
     auto HandleWorldInvalidated(UWorld* InWorld) -> void;
 
@@ -66,6 +73,10 @@ private:
     TArray<FCkProceduralAnimationDebugger_Row> _Rows;
     TOptional<FCk_ProceduralAnimation_DebugSnapshot> _LiveSnapshot;
     FCkProceduralAnimationDebugger_History _History;
+    TArray<FCk_ProceduralAction_Identity> _ActionStreams;
+    TArray<FCkProceduralAnimationDebugger_LimbControl> _LimbControls;
+    FCk_ProceduralActionRecordedStore _ActionRecording{32768};
+    bool _ActionRecordingStopped = false;
     FString _SelectedId;
     FString _SelectedLegId;
     uint64 _HistoryRevision = 0;

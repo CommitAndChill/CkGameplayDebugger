@@ -58,6 +58,9 @@ private:
     auto DoBuild_LegActions() -> TSharedRef<SWidget>;
     auto DoRefresh_Presentation() -> void;
     auto DoRefresh_Roster() -> void;
+    auto DoRefresh_Actions() -> void;
+    auto DoGet_FirstActionRecord() const -> int32;
+    auto DoGet_ActionText() const -> FText;
     auto DoRefresh_Legs(const FCk_ProceduralAnimation_DebugSnapshot& InSample) -> void;
     auto DoRefresh_Timeline() -> void;
     auto DoRecreate_Timeline(const TArray<FString>& InLaneLabels) -> void;
@@ -74,6 +77,9 @@ private:
     TSharedPtr<FCkDebug_ViewportPicker> _Picker;
     TSharedPtr<SCkDebug_EntityHealthList> _Roster;
     TSharedPtr<SCkDebug_EvidenceList> _Legs;
+    TSharedPtr<SCkDebug_EvidenceList> _ActionStreams;
+    TSharedPtr<SCkDebug_EvidenceList> _ActionRecords;
+    TSharedPtr<SCkDebug_EvidenceList> _LimbControls;
     TSharedPtr<SCkDebug_EventTimeline> _Timeline;
     TSharedPtr<SBox> _TimelineHost;
     TSharedPtr<FCkProceduralAnimationDebugger_Preview> _Preview;
@@ -82,6 +88,9 @@ private:
     TArray<FString> _LaneLabels;
     FString _Filter;
     FString _FramedEntity;
+    int64 _DisplayedActionIdentity = 0;
+    int32 _SelectedActionRecord = INDEX_NONE;
+    int32 _ActionPageStart = INDEX_NONE;
     bool _Released = false;
     FDelegateHandle _ModelChangedHandle;
     FDelegateHandle _WorldChangedHandle;

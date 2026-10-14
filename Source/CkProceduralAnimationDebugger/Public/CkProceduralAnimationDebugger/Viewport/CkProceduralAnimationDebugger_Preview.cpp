@@ -206,6 +206,7 @@ auto
     { return; }
 
     _Sample = InSample;
+    _ActionPose.Reset();
     _SelectedLegId = InSelectedLegId;
     _SelectedCenter.Reset();
 
@@ -325,10 +326,77 @@ auto
 
 auto
     FCkProceduralAnimationDebugger_Preview::
+    ShowAction(
+        const FCk_ProceduralArticulation_Pose& InPose)
+    -> void
+{
+    if (NOT _Target.IsValid())
+    { return; }
+    _Sample.Reset();
+    _ActionPose = InPose;
+    _SelectedCenter.Reset();
+    _SelectedLegId.Reset();
+    const auto Origin = InPose.Get_RootFrame().GetLocation();
+    auto Lines = TArray<FCk_DebugScene_Line>{};
+    auto Labels = TArray<FCk_DebugScene_Label>{};
+    _Target->Begin_Reconcile();
+    if (InPose.Get_HasBodyPresentation())
+    {
+        auto Body = InPose.Get_BodyPresentation();
+        Body.AddToTranslation(-Origin);
+        const auto Instances = TArray<FCk_DebugScene_Instance>{
+            ck_procedural_debug_preview::MakeInstance(Body, ck_procedural_debug_preview::BodySize, CkStyle::TextDim(), 0)};
+        if (NOT _Target->Upsert_Item(ck_procedural_debug_preview::BodyItemKey, Instances))
+        {
+            _Target->Abort_Reconcile();
+            Reset();
+            return;
+        }
+    }
+    for (auto Index = 0; Index < InPose.Get_Limbs().Num(); ++Index)
+    {
+        const auto& Limb = InPose.Get_Limbs()[Index];
+        const auto Color = Limb.Get_ChainState() == ECk_ProceduralRig_ChainState::Crossing
+            ? CkStyle::Err() : ck::debug_axes::Get_CategoricalColor(Index);
+        auto Instances = TArray<FCk_DebugScene_Instance>{};
+        auto DistalJoint = Limb.Get_AcceptedEndpoint().GetLocation();
+        // Segment transforms are joint midpoints. Reconstruct backwards from the copied terminal endpoint.
+        for (auto SegmentIndex = Limb.Get_Segments().Num() - 1; SegmentIndex >= 0; --SegmentIndex)
+        {
+            auto Pose = Limb.Get_Segments()[SegmentIndex];
+            const auto ProximalJoint = Pose.GetLocation() * 2.0 - DistalJoint;
+            const auto Length = FVector::Distance(ProximalJoint, DistalJoint);
+            Pose.AddToTranslation(-Origin);
+            Instances.Add(ck_procedural_debug_preview::MakeInstance(Pose,
+                FVector{Length, ck_procedural_debug_preview::TipSegmentThickness, ck_procedural_debug_preview::TipSegmentThickness}, Color, 0));
+            DistalJoint = ProximalJoint;
+        }
+        auto Endpoint = Limb.Get_AcceptedEndpoint();
+        Endpoint.AddToTranslation(-Origin);
+        Instances.Add(ck_procedural_debug_preview::MakeInstance(Endpoint, ck_procedural_debug_preview::FootPartSize, Color, 0));
+        Lines.Add({Endpoint.GetLocation(), Limb.Get_RequestedEndpoint().GetLocation() - Origin, CkStyle::Warn(), 2.0f});
+        if (NOT _Target->Upsert_Item(ck_procedural_debug_preview::LegItemKeyBase + Index, Instances))
+        {
+            _Target->Abort_Reconcile();
+            Reset();
+            return;
+        }
+    }
+    if (NOT _Target->End_Reconcile())
+    { Reset(); return; }
+    _Target->Set_LineChannel(ck_procedural_debug_preview::Lines, MoveTemp(Lines));
+    _Target->Set_LabelChannel(ck_procedural_debug_preview::Labels, MoveTemp(Labels));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkProceduralAnimationDebugger_Preview::
     Reset()
     -> void
 {
     _Sample.Reset();
+    _ActionPose.Reset();
     _SelectedCenter.Reset();
     if (NOT _Target.IsValid())
     { return; }
@@ -431,6 +499,12 @@ auto
     -> void
 {
     _ShowLabels = InShow;
+    if (_ActionPose.IsSet())
+    {
+        const auto Pose = _ActionPose.GetValue();
+        ShowAction(Pose);
+        return;
+    }
     if (NOT _Sample.IsSet())
     { return; }
 

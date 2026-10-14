@@ -2,6 +2,7 @@
 
 #include "CkDebuggerCommon/Viewport/SCkDebug_3dPreviewViewport.h"
 #include "CkProceduralAnimation/Debug/CkProceduralAnimation_Debug.h"
+#include "CkProceduralAnimation/Articulation/CkProceduralArticulation_Observation.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -15,6 +16,7 @@ class CKPROCEDURALANIMATIONDEBUGGER_API FCkProceduralAnimationDebugger_Preview :
 public:
     auto Initialize(UWorld* InPreviewWorld) -> void;
     auto Show(const FCk_ProceduralAnimation_DebugSnapshot& InSample, const FString& InSelectedLegId) -> void;
+    auto ShowAction(const FCk_ProceduralArticulation_Pose& InPose) -> void;
     auto Reset() -> void;
     auto Get_FrameBounds(ECkDebug3dFrameTarget InTarget) const -> FBox override;
     auto Get_SelectionCenter() const -> TOptional<FVector> override;
@@ -30,6 +32,7 @@ public:
 private:
     TSharedPtr<FCk_DebugScene_Target> _Target;
     TOptional<FCk_ProceduralAnimation_DebugSnapshot> _Sample;
+    TOptional<FCk_ProceduralArticulation_Pose> _ActionPose;
     TMulticastDelegate<void(const FString&)> _OnLegSelected;
     TOptional<FVector> _SelectedCenter;
     FString _SelectedLegId;
