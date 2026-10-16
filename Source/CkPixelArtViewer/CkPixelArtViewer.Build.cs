@@ -7,7 +7,7 @@ public class CkPixelArtViewer : CkModuleRules
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore",
-            "UnrealEd", "WorkspaceMenuStructure", "PropertyEditor", "DeveloperSettings", "DesktopPlatform", "CkCore", "CkPixelSprite",
+            "UnrealEd", "WorkspaceMenuStructure", "PropertyEditor", "DeveloperSettings", "DesktopPlatform", "CkCore", "CkEcs", "CkPixelSprite",
             "CkPixelSpriteEditor", "CkDebuggerCommon", "CkEditorTools",
         });
         PrivateDependencyModuleNames.AddRange(new string[] { "AssetRegistry", "Projects" });
