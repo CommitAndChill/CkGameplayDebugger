@@ -3,6 +3,7 @@
 #include <HAL/FileManager.h>
 #include <HAL/PlatformMisc.h>
 #include <HAL/PlatformProcess.h>
+#include <HAL/PlatformTime.h>
 #include <Misc/App.h>
 #include <Misc/DateTime.h>
 #include <Misc/FileHelper.h>
@@ -12,7 +13,8 @@
 namespace ck_hang_monitor
 {
     constexpr auto MaxAllowedDumps = 3;
-    constexpr auto PollIntervalSeconds = 1.0f;
+    constexpr auto PollInterval = FCk_Time{1.0};
+    constexpr auto ShutdownPollInterval = FCk_Time{0.01};
 
     auto Get_IsProcDumpExecutable(const FString& InPath) -> bool
     {
@@ -61,44 +63,92 @@ namespace ck_hang_monitor
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto FCkHangMonitorController::Initialize() -> void
+FCkHangMonitorController::
+    ~FCkHangMonitorController()
 {
+    Shutdown();
+    DoService_Processes();
+    if (Get_HasPendingProcesses())
+    {
+        _Snapshot._CleanupIncomplete = true;
+        _Snapshot.Status = TEXT("Cleanup incomplete: ProcDump child exit was not confirmed before controller destruction.");
+        DoWrite_Manifest();
+    }
+    DoClose_Process(_MonitorProcess);
+    DoClose_Process(_CancelProcess);
+    DoClose_OutputPipes();
+}
+
+auto
+    FCkHangMonitorController::
+    Initialize()
+    -> void
+{
+    if (_ShutdownRequested && Get_HasPendingProcesses())
+    { return; }
     if (_TickerHandle.IsValid())
     { return; }
 
+    _ShutdownRequested = false;
     _TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
         FTickerDelegate::CreateRaw(this, &FCkHangMonitorController::DoTick),
-        ck_hang_monitor::PollIntervalSeconds);
+        static_cast<float>(ck_hang_monitor::PollInterval.Get_Seconds()));
 }
 
-auto FCkHangMonitorController::Shutdown() -> void
+auto
+    FCkHangMonitorController::
+    Shutdown()
+    -> void
 {
-    if (!_TickerHandle.IsValid())
-    { return; }
-    FString IgnoredError;
-    TryStop(IgnoredError);
-
     if (_TickerHandle.IsValid())
     {
         FTSTicker::GetCoreTicker().RemoveTicker(_TickerHandle);
         _TickerHandle.Reset();
     }
 
-    DoClose_Process(_MonitorProcess);
-    DoClose_Process(_CancelProcess);
-    DoClose_OutputPipes();
-    _Snapshot.IsMonitoring = false;
-    _Snapshot.IsReady = false;
-    _Snapshot.IsStopping = false;
+    if (_ShutdownRequested)
+    {
+        DoService_Processes();
+        return;
+    }
+    _ShutdownRequested = true;
+    if (!Get_HasPendingProcesses())
+    { return; }
+
+    FString StopError;
+    TryStop(StopError);
+    const auto Deadline = FPlatformTime::Seconds() + _ShutdownBudget.Get_Seconds();
+    do
+    {
+        DoService_Processes();
+        if (!Get_HasPendingProcesses())
+        { return; }
+        if (FPlatformTime::Seconds() >= Deadline)
+        { break; }
+        FPlatformProcess::Sleep(static_cast<float>(ck_hang_monitor::ShutdownPollInterval.Get_Seconds()));
+    } while (true);
+
+    _Snapshot._CleanupIncomplete = true;
+    _Snapshot.IsStopping = true;
+    _Snapshot.Status = TEXT("Cleanup incomplete: ProcDump child exit was not confirmed within the shutdown budget.");
+    DoWrite_Manifest();
 }
+
+auto
+    FCkHangMonitorController::
+    Get_HasPendingProcesses() const
+    -> bool
+{ return _MonitorProcess.IsValid() || _CancelProcess.IsValid(); }
 
 auto FCkHangMonitorController::Get_Snapshot() const -> FCkHangMonitorSnapshot
 { return _Snapshot; }
 
-auto FCkHangMonitorController::TryStart(
-    const FString& InProcDumpPath,
-    const int32 InMaxDumps,
-    FString& OutError)
+auto
+    FCkHangMonitorController::
+    TryStart(
+        const FString& InProcDumpPath,
+        const int32 InMaxDumps,
+        FString& OutError)
     -> bool
 {
     OutError.Reset();
@@ -109,7 +159,7 @@ auto FCkHangMonitorController::TryStart(
         return false;
     }
 
-    if (_Snapshot.IsMonitoring || _Snapshot.IsStopping)
+    if (Get_HasPendingProcesses())
     {
         OutError = TEXT("Hang monitoring is already active or stopping.");
         return false;
@@ -159,13 +209,14 @@ auto FCkHangMonitorController::TryStart(
     const auto Arguments = FString::Format(
         TEXT("-accepteula -h -n {0} -mm {1} \"{2}\""),
         {InMaxDumps, TargetPid, DumpStem});
+    uint32 MonitorPid = 0;
     auto Process = FPlatformProcess::CreateProc(
         *InProcDumpPath,
         *Arguments,
         false,
         true,
         true,
-        nullptr,
+        &MonitorPid,
         0,
         nullptr,
         StdOutWrite,
@@ -193,6 +244,7 @@ auto FCkHangMonitorController::TryStart(
     _CancelIssued = false;
     _StartedUtc = FDateTime::UtcNow().ToIso8601();
     _Snapshot = FCkHangMonitorSnapshot{};
+    _Snapshot._MonitorPid = MonitorPid;
     _Snapshot.IsMonitoring = true;
     _Snapshot.Status = TEXT("Starting ProcDump hang monitor...");
     _Snapshot.OutputDirectory = OutputDirectory;
@@ -203,18 +255,27 @@ auto FCkHangMonitorController::TryStart(
     return true;
 }
 
-auto FCkHangMonitorController::TryStop(FString& OutError) -> bool
+auto
+    FCkHangMonitorController::
+    TryStop(
+        FString& OutError)
+    -> bool
 {
     OutError.Reset();
 
-    if (!_Snapshot.IsMonitoring)
+    if (!Get_HasPendingProcesses())
     {
         OutError = TEXT("Hang monitoring is not active.");
         return false;
     }
 
-    if (_Snapshot.IsStopping && _CancelIssued)
-    { return true; }
+    if (_CancelIssued)
+    {
+        OutError = _Snapshot.LastError;
+        return OutError.IsEmpty();
+    }
+
+    _Snapshot.IsStopping = true;
 
     // ProcDump's PID cancellation event does not exist until it has attached.
     // Preserve an early Stop request and issue it as soon as attachment is confirmed.
@@ -226,27 +287,40 @@ auto FCkHangMonitorController::TryStop(FString& OutError) -> bool
         return true;
     }
 
+    _CancelIssued = true;
     const auto Arguments = FString::Format(TEXT("-accepteula -cancel {0}"), {_Snapshot.TargetPid});
-    auto CancelProcess = FPlatformProcess::CreateProc(
-        *_Snapshot.ProcDumpPath,
-        *Arguments,
-        false,
-        true,
-        true,
-        nullptr,
-        0,
-        nullptr,
-        nullptr);
+    uint32 CancelPid = 0;
+    auto CancelProcess = FProcHandle{};
+#if WITH_DEV_AUTOMATION_TESTS
+    if (!_RejectCancelLaunchForTest)
+#endif
+    {
+        CancelProcess = FPlatformProcess::CreateProc(
+            *_Snapshot.ProcDumpPath,
+            *Arguments,
+            false,
+            true,
+            true,
+            &CancelPid,
+            0,
+            nullptr,
+            nullptr);
+    }
     if (!CancelProcess.IsValid())
     {
         OutError = TEXT("ProcDump cancellation command could not be started.");
         _Snapshot.LastError = OutError;
+        _Snapshot.Status = TEXT("ProcDump cancellation failed; worker exit remains unconfirmed.");
         DoWrite_Manifest();
         return false;
     }
 
     _CancelProcess = MoveTemp(CancelProcess);
-    _CancelIssued = true;
+    _Snapshot._CancelPid = CancelPid;
+#if WITH_DEV_AUTOMATION_TESTS
+    if (_OnCancelStarted)
+    { _OnCancelStarted(CancelPid); }
+#endif
     _Snapshot.IsStopping = true;
     _Snapshot.LastError.Reset();
     _Snapshot.Status = TEXT("Cancelling ProcDump hang monitor...");
@@ -262,10 +336,23 @@ auto FCkHangMonitorController::Get_DefaultProcDumpPath() -> FString
     return FPaths::Combine(LocalAppData, TEXT("CkDiagnostics/ProcDump/procdump64.exe"));
 }
 
-auto FCkHangMonitorController::DoTick(const float InDeltaSeconds) -> bool
+auto
+    FCkHangMonitorController::
+    DoTick(
+        const float InDeltaSeconds)
+    -> bool
 {
-    if (!_Snapshot.IsMonitoring)
-    { return true; }
+    DoService_Processes();
+    return true;
+}
+
+auto
+    FCkHangMonitorController::
+    DoService_Processes()
+    -> void
+{
+    if (!Get_HasPendingProcesses())
+    { return; }
 
     if (_StdOutPipeRead != nullptr)
     {
@@ -299,39 +386,33 @@ auto FCkHangMonitorController::DoTick(const float InDeltaSeconds) -> bool
     if (_Snapshot.IsReady && _Snapshot.IsStopping && !_CancelIssued)
     {
         FString Error;
-        if (!TryStop(Error))
-        { _Snapshot.IsStopping = false; }
+        TryStop(Error);
     }
 
-    if (_CancelProcess.IsValid() && !FPlatformProcess::IsProcRunning(_CancelProcess))
+    int32 CancelCode = 0;
+    if (DoTryObserve_ProcessExit(_CancelProcess, CancelCode))
     {
-        int32 CancelCode = 0;
-        FPlatformProcess::GetProcReturnCode(_CancelProcess, &CancelCode);
-        DoClose_Process(_CancelProcess);
-        if (CancelCode != 0 && FPlatformProcess::IsProcRunning(_MonitorProcess))
+        if (CancelCode != 0 && _MonitorProcess.IsValid() && FPlatformProcess::IsProcRunning(_MonitorProcess))
         {
-            _Snapshot.IsStopping = false;
-            _CancelIssued = false;
-            _Snapshot.LastError = FString::Printf(TEXT("ProcDump cancellation exited with code %d. Stop can be retried."), CancelCode);
+            _Snapshot.LastError = FString::Printf(TEXT("ProcDump cancellation exited with code %d; worker exit remains unconfirmed."), CancelCode);
+            _Snapshot.Status = TEXT("ProcDump cancellation failed.");
             DoWrite_Manifest();
         }
     }
 
-    if (_MonitorProcess.IsValid() && !FPlatformProcess::IsProcRunning(_MonitorProcess))
+    int32 ReturnCode = 0;
+    if (DoTryObserve_ProcessExit(_MonitorProcess, ReturnCode))
     {
-        int32 ReturnCode = 0;
-        FPlatformProcess::GetProcReturnCode(_MonitorProcess, &ReturnCode);
-        DoClose_Process(_MonitorProcess);
         DoClose_OutputPipes();
 
         _Snapshot.IsMonitoring = false;
         _Snapshot.IsReady = false;
-        _Snapshot.IsStopping = false;
+        _Snapshot.IsStopping = _CancelProcess.IsValid();
         if (ReturnCode == 0 || (_Snapshot.NumDumps >= _Snapshot.MaxDumps
             && ck_hang_monitor::Decode_StdOut(_StdOutTail).Contains(TEXT("Dump count reached"))))
         {
-            _Snapshot.LastError.Reset();
-            _Snapshot.Status = _Snapshot.NumDumps >= _Snapshot.MaxDumps
+            _Snapshot.Status = _CancelProcess.IsValid()
+                ? TEXT("Worker exited; waiting for cancellation command exit.") : _Snapshot.NumDumps >= _Snapshot.MaxDumps
                 ? TEXT("Capture complete. Dump budget reached.") : TEXT("ProcDump hang monitor stopped.");
         }
         else
@@ -343,6 +424,32 @@ auto FCkHangMonitorController::DoTick(const float InDeltaSeconds) -> bool
         DoWrite_Manifest();
     }
 
+    if (!Get_HasPendingProcesses())
+    {
+        _Snapshot.IsStopping = false;
+        _Snapshot._CleanupIncomplete = false;
+        if (_Snapshot.LastError.IsEmpty())
+        { _Snapshot.Status = TEXT("ProcDump child processes exited."); }
+        DoWrite_Manifest();
+    }
+}
+
+auto
+    FCkHangMonitorController::
+    DoTryObserve_ProcessExit(
+        FProcHandle& InOutProcess,
+        int32& OutReturnCode)
+    -> bool
+{
+    if (!InOutProcess.IsValid() || FPlatformProcess::IsProcRunning(InOutProcess))
+    { return false; }
+    if (!FPlatformProcess::GetProcReturnCode(InOutProcess, &OutReturnCode))
+    {
+        _Snapshot.LastError = TEXT("Could not confirm a ProcDump child exit code; process observation is retained.");
+        DoWrite_Manifest();
+        return false;
+    }
+    DoClose_Process(InOutProcess);
     return true;
 }
 
@@ -362,22 +469,30 @@ auto FCkHangMonitorController::DoClose_OutputPipes() -> void
     _StdErrPipeRead = nullptr;
 }
 
-auto FCkHangMonitorController::DoRefresh_DumpCount() -> void
+auto
+    FCkHangMonitorController::
+    DoRefresh_DumpCount()
+    -> void
 {
+    if (_Snapshot.OutputDirectory.IsEmpty())
+    { return; }
     auto DumpPaths = TArray<FString>{};
     IFileManager::Get().FindFilesRecursive(DumpPaths, *_Snapshot.OutputDirectory, TEXT("*.dmp"), true, false);
     _Snapshot.NumDumps = DumpPaths.Num();
 }
 
-auto FCkHangMonitorController::DoWrite_Manifest() const -> void
+auto
+    FCkHangMonitorController::
+    DoWrite_Manifest() const
+    -> void
 {
     if (_Snapshot.OutputDirectory.IsEmpty())
     { return; }
 
-    const auto Manifest = FString::Format(TEXT("startedUtc={0}\nstate={1}\ntargetPid={2}\ntargetExecutable={3}\ntargetBuildConfiguration={4}\nprocDumpPath={5}\noutputDirectory={6}\nmaxDumps={7}\nnumDumps={8}\nbuildVersion={9}\nlastError={10}\n"),
+    const auto Manifest = FString::Format(TEXT("startedUtc={0}\nstate={1}\ntargetPid={2}\ntargetExecutable={3}\ntargetBuildConfiguration={4}\nprocDumpPath={5}\noutputDirectory={6}\nmaxDumps={7}\nnumDumps={8}\nbuildVersion={9}\nlastError={10}\ncleanupIncomplete={11}\nmonitorPid={12}\ncancelPid={13}\nmonitorExitUnconfirmed={14}\ncancelExitUnconfirmed={15}\n"),
         {
             _StartedUtc,
-            _Snapshot.IsMonitoring
+            _Snapshot._CleanupIncomplete ? TEXT("cleanup-incomplete") : Get_HasPendingProcesses()
                 ? (_Snapshot.IsStopping
                     ? TEXT("stopping")
                     : (_Snapshot.IsReady ? TEXT("monitoring") : TEXT("starting")))
@@ -390,7 +505,12 @@ auto FCkHangMonitorController::DoWrite_Manifest() const -> void
             _Snapshot.MaxDumps,
             _Snapshot.NumDumps,
             FApp::GetBuildVersion(),
-            _Snapshot.LastError
+            _Snapshot.LastError,
+            _Snapshot._CleanupIncomplete,
+            _Snapshot._MonitorPid,
+            _Snapshot._CancelPid,
+            _MonitorProcess.IsValid(),
+            _CancelProcess.IsValid()
         });
     FFileHelper::SaveStringToFile(Manifest, *FPaths::Combine(_Snapshot.OutputDirectory, TEXT("manifest.txt")));
 }

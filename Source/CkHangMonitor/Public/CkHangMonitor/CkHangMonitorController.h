@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CkCore/Time/CkTime.h"
 
 #include <Containers/Ticker.h>
 #include <HAL/PlatformProcess.h>
@@ -9,6 +10,9 @@
 
 struct CKHANGMONITOR_API FCkHangMonitorSnapshot
 {
+    CK_GENERATED_BODY(FCkHangMonitorSnapshot);
+    friend class FCkHangMonitorController;
+
     bool    IsMonitoring = false;
     bool    IsReady = false;
     bool    IsStopping = false;
@@ -19,6 +23,16 @@ struct CKHANGMONITOR_API FCkHangMonitorSnapshot
     uint32  TargetPid = 0;
     int32   NumDumps = 0;
     int32   MaxDumps = 1;
+
+private:
+    bool _CleanupIncomplete = false;
+    uint32 _MonitorPid = 0;
+    uint32 _CancelPid = 0;
+
+public:
+    CK_PROPERTY_GET(_CleanupIncomplete);
+    CK_PROPERTY_GET(_MonitorPid);
+    CK_PROPERTY_GET(_CancelPid);
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -26,32 +40,70 @@ struct CKHANGMONITOR_API FCkHangMonitorSnapshot
 class CKHANGMONITOR_API FCkHangMonitorController
 {
 public:
-    ~FCkHangMonitorController() { Shutdown(); }
+    ~FCkHangMonitorController();
     FCkHangMonitorController() = default;
     FCkHangMonitorController(const FCkHangMonitorController&) = delete;
     FCkHangMonitorController& operator=(const FCkHangMonitorController&) = delete;
-    auto Initialize() -> void;
-    auto Shutdown() -> void;
+    auto
+    Initialize()
+    -> void;
+    auto
+    Shutdown()
+    -> void;
 
-    auto Get_Snapshot() const -> FCkHangMonitorSnapshot;
+    auto
+    Get_Snapshot() const
+    -> FCkHangMonitorSnapshot;
 
-    auto TryStart(
+    auto
+    TryStart(
         const FString& InProcDumpPath,
         int32 InMaxDumps,
         FString& OutError)
-        -> bool;
+    -> bool;
 
-    auto TryStop(FString& OutError) -> bool;
+    auto
+    TryStop(
+        FString& OutError)
+    -> bool;
 
-    static auto Get_DefaultProcDumpPath() -> FString;
+    static auto
+    Get_DefaultProcDumpPath()
+    -> FString;
 
 private:
-    auto DoTick(float InDeltaSeconds) -> bool;
-    auto DoClose_Process(FProcHandle& InOutProcess) -> void;
-    auto DoClose_OutputPipes() -> void;
-    auto DoRefresh_DumpCount() -> void;
-    auto DoWrite_Manifest() const -> void;
-    auto DoWrite_OutputTail() const -> void;
+    friend class FCkHangMonitorTestAccess;
+    auto
+    DoTick(
+        float InDeltaSeconds)
+    -> bool;
+    auto
+    DoService_Processes()
+    -> void;
+    auto
+    Get_HasPendingProcesses() const
+    -> bool;
+    auto
+    DoTryObserve_ProcessExit(
+        FProcHandle& InOutProcess,
+        int32& OutReturnCode)
+    -> bool;
+    auto
+    DoClose_Process(
+        FProcHandle& InOutProcess)
+    -> void;
+    auto
+    DoClose_OutputPipes()
+    -> void;
+    auto
+    DoRefresh_DumpCount()
+    -> void;
+    auto
+    DoWrite_Manifest() const
+    -> void;
+    auto
+    DoWrite_OutputTail() const
+    -> void;
 
     FCkHangMonitorSnapshot _Snapshot;
     FProcHandle             _MonitorProcess;
@@ -62,6 +114,12 @@ private:
     FString                 _StdErrTail;
     FString                 _StartedUtc;
     bool                    _CancelIssued = false;
+    bool                    _ShutdownRequested = false;
+    FCk_Time                _ShutdownBudget{2.0};
+#if WITH_DEV_AUTOMATION_TESTS
+    TFunction<void(uint32)> _OnCancelStarted;
+    bool _RejectCancelLaunchForTest = false;
+#endif
     FTSTicker::FDelegateHandle _TickerHandle;
 };
 

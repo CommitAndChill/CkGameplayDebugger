@@ -10,6 +10,55 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 
+#if WITH_DEV_AUTOMATION_TESTS
+
+class FCkHangMonitorTestAccess
+{
+public:
+    static auto
+    Service(
+        FCkHangMonitorController& InController)
+    -> void
+    { InController.DoService_Processes(); }
+
+    static auto
+    ObserveCancellation(
+        FCkHangMonitorController& InController,
+        TFunction<void(uint32)> InObserver)
+    -> void
+    { InController._OnCancelStarted = MoveTemp(InObserver); }
+
+    static auto
+    AdoptRunningHost(
+        FCkHangMonitorController& InController,
+        const bool InReady)
+    -> void
+    {
+        InController._MonitorProcess = FPlatformProcess::OpenProcess(FPlatformProcess::GetCurrentProcessId());
+        InController._Snapshot.IsMonitoring = true;
+        InController._Snapshot.IsReady = InReady;
+        InController._RejectCancelLaunchForTest = true;
+        InController._ShutdownBudget = FCk_Time{};
+    }
+
+    static auto
+    HasPendingProcesses(
+        const FCkHangMonitorController& InController)
+    -> bool
+    { return InController.Get_HasPendingProcesses(); }
+
+    static auto
+    AdoptRunningHelper(
+        FCkHangMonitorController& InController)
+    -> void
+    {
+        InController._CancelProcess = FPlatformProcess::OpenProcess(FPlatformProcess::GetCurrentProcessId());
+        InController._Snapshot.IsStopping = true;
+        InController._CancelIssued = true;
+        InController._ShutdownBudget = FCk_Time{};
+    }
+};
+
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace ck_hang_monitor_tests
@@ -51,7 +100,9 @@ namespace ck_hang_monitor_tests
         {
         }
 
-        auto Update() -> bool override
+        auto
+        Update()
+        -> bool override
         {
             auto& Module = FCkHangMonitorModule::Get();
             auto& Controller = Module.Get_Controller();
@@ -136,7 +187,7 @@ namespace ck_hang_monitor_tests
                 case EPhase::AwaitStopped:
                 {
                     const auto Stopped = Controller.Get_Snapshot();
-                    if (!Stopped.IsMonitoring)
+                    if (!Stopped.IsMonitoring && !Stopped.IsStopping)
                     {
                         _Test->TestFalse(TEXT("stopped monitor leaves no cancellation-in-progress state"), Stopped.IsStopping);
                         _Test->TestFalse(TEXT("stopped monitor clears its readiness state"), Stopped.IsReady);
@@ -178,7 +229,7 @@ namespace ck_hang_monitor_tests
                 case EPhase::AwaitEarlyStopped:
                 {
                     const auto Stopped = Controller.Get_Snapshot();
-                    if (!Stopped.IsMonitoring)
+                    if (!Stopped.IsMonitoring && !Stopped.IsStopping)
                     {
                         _Test->TestFalse(TEXT("early stopped monitor clears cancellation-in-progress state"), Stopped.IsStopping);
                         _Test->TestFalse(TEXT("early stopped monitor clears readiness state"), Stopped.IsReady);
@@ -230,7 +281,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     "Ck.DebuggerLauncher.HangMonitor.RejectsInvalidStartWithoutPartialState",
     ck_hang_monitor_tests::kTestFlags)
 
-bool FCkHangMonitor_RejectsInvalidStartWithoutPartialState::RunTest(const FString&)
+auto
+    FCkHangMonitor_RejectsInvalidStartWithoutPartialState::
+    RunTest(
+        const FString&)
+    -> bool
 {
     using namespace ck_hang_monitor_tests;
 
@@ -274,7 +329,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     "Ck.DebuggerLauncher.HangMonitor.RejectsStaleStopWithoutPartialState",
     ck_hang_monitor_tests::kTestFlags)
 
-bool FCkHangMonitor_RejectsStaleStopWithoutPartialState::RunTest(const FString&)
+auto
+    FCkHangMonitor_RejectsStaleStopWithoutPartialState::
+    RunTest(
+        const FString&)
+    -> bool
 {
     using namespace ck_hang_monitor_tests;
 
@@ -299,12 +358,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     "Ck.DebuggerLauncher.HangMonitor.OptInCurrentProcessArmAndStop",
     ck_hang_monitor_tests::kTestFlags | EAutomationTestFlags::NonNullRHI)
 
-bool FCkHangMonitor_OptInCurrentProcessArmAndStop::RunTest(const FString&)
+auto
+    FCkHangMonitor_OptInCurrentProcessArmAndStop::
+    RunTest(
+        const FString&)
+    -> bool
 {
     const auto ProcDumpPath = FPlatformMisc::GetEnvironmentVariable(TEXT("CK_HANG_MONITOR_PROCDUMP"));
     if (ProcDumpPath.IsEmpty())
     {
-        AddInfo(TEXT("CK_HANG_MONITOR_PROCDUMP is unavailable; opt-in ProcDump arm/stop verification was not run."));
+        AddWarning(TEXT("NOT EXERCISED: CK_HANG_MONITOR_PROCDUMP is unavailable; real ProcDump arm/stop verification was not run."));
         return true;
     }
 
@@ -322,3 +385,193 @@ bool FCkHangMonitor_OptInCurrentProcessArmAndStop::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkHangMonitor_BoundedIncompleteShutdown,
+    "Ck.TenetIntegrity.HangMonitor.BoundedIncompleteShutdown",
+    ck_hang_monitor_tests::kTestFlags)
+
+auto
+    FCkHangMonitor_BoundedIncompleteShutdown::
+    RunTest(
+        const FString&)
+    -> bool
+{
+    for (const auto Ready : {false, true})
+    {
+        auto Controller = FCkHangMonitorController{};
+        Controller.Initialize();
+        FCkHangMonitorTestAccess::AdoptRunningHost(Controller, Ready);
+        TestTrue(TEXT("deadline seam owns a real handle to a running process"),
+            FCkHangMonitorTestAccess::HasPendingProcesses(Controller));
+        const auto Started = FPlatformTime::Seconds();
+        Controller.Shutdown();
+        TestTrue(TEXT("zero-budget seam returns promptly"), FPlatformTime::Seconds() - Started < 0.5);
+        const auto Incomplete = Controller.Get_Snapshot();
+        TestTrue(TEXT("live child produces explicit incomplete cleanup"), Incomplete.Get_CleanupIncomplete());
+        TestTrue(TEXT("incomplete shutdown retains process observation"),
+            FCkHangMonitorTestAccess::HasPendingProcesses(Controller));
+        TestTrue(TEXT("incomplete shutdown retains active state"), Incomplete.IsMonitoring);
+        TestTrue(TEXT("incomplete shutdown retains stop intent"), Incomplete.IsStopping);
+        if (Ready)
+        {
+            TestFalse(TEXT("cancel launch failure is explicit"), Incomplete.LastError.IsEmpty());
+            auto Error = FString{};
+            TestFalse(TEXT("failed cancellation cannot silently retry"), Controller.TryStop(Error));
+            TestEqual(TEXT("failed cancellation preserves error"), Error, Incomplete.LastError);
+        }
+        Controller.Initialize();
+        auto Error = FString{};
+        TestFalse(TEXT("reinitialize cannot permit overlapping rearm"),
+            Controller.TryStart(FCkHangMonitorController::Get_DefaultProcDumpPath(), 1, Error));
+        Controller.Shutdown();
+        TestEqual(TEXT("repeated shutdown preserves failure"), Controller.Get_Snapshot().LastError, Incomplete.LastError);
+        TestTrue(TEXT("repeated shutdown preserves unconfirmed exit"), Controller.Get_Snapshot().Get_CleanupIncomplete());
+        TestTrue(TEXT("test host remains alive"), FPlatformProcess::IsApplicationRunning(FPlatformProcess::GetCurrentProcessId()));
+    }
+    auto Controller = FCkHangMonitorController{};
+    Controller.Initialize();
+    FCkHangMonitorTestAccess::AdoptRunningHelper(Controller);
+    Controller.Shutdown();
+    TestFalse(TEXT("helper-only pending state does not invent a live worker"), Controller.Get_Snapshot().IsMonitoring);
+    TestTrue(TEXT("helper remains observed after worker exit"), FCkHangMonitorTestAccess::HasPendingProcesses(Controller));
+    TestTrue(TEXT("helper-only timeout reports incomplete cleanup"), Controller.Get_Snapshot().Get_CleanupIncomplete());
+    TestTrue(TEXT("helper-only timeout preserves stopping state"), Controller.Get_Snapshot().IsStopping);
+    Controller.Initialize();
+    auto Error = FString{};
+    TestFalse(TEXT("helper-only pending state prohibits rearm"),
+        Controller.TryStart(FCkHangMonitorController::Get_DefaultProcDumpPath(), 1, Error));
+    return true;
+}
+
+namespace ck_hang_monitor_tests
+{
+    class FCk_Latent_HangMonitorShutdown final : public IAutomationLatentCommand
+    {
+    public:
+        FCk_Latent_HangMonitorShutdown(
+            FAutomationTestBase* InTest,
+            FString InPath)
+            : _Test(InTest), _Path(MoveTemp(InPath))
+        {}
+
+        ~FCk_Latent_HangMonitorShutdown() override
+        {
+            _Controller.Shutdown();
+            FCkHangMonitorTestAccess::ObserveCancellation(_Controller, {});
+            FPlatformProcess::CloseProc(_WorkerObservation);
+            FPlatformProcess::CloseProc(_HelperObservation);
+        }
+
+        auto
+        Update()
+        -> bool override
+        {
+            if (!_Started)
+            {
+                _Controller.Initialize();
+                auto Error = FString{};
+                if (!_Controller.TryStart(_Path, 1, Error))
+                {
+                    _Test->AddError(FString::Printf(TEXT("ProcDump shutdown test could not start: %s"), *Error));
+                    return true;
+                }
+                _WorkerObservation = FPlatformProcess::OpenProcess(_Controller.Get_Snapshot().Get_MonitorPid());
+                _Test->TestTrue(TEXT("independent worker observation opened"), _WorkerObservation.IsValid());
+                FCkHangMonitorTestAccess::ObserveCancellation(_Controller, [this](const uint32 InPid)
+                {
+                    ++_CancelLaunches;
+                    _HelperObservation = FPlatformProcess::OpenProcess(InPid);
+                    _Test->TestTrue(TEXT("independent helper observation opened"), _HelperObservation.IsValid());
+                });
+                _Started = true;
+                _Deadline = FPlatformTime::Seconds() + FCk_Time{20.0}.Get_Seconds();
+                if (_WaitForReady)
+                { return false; }
+            }
+
+            if (_WaitForReady)
+            {
+                FCkHangMonitorTestAccess::Service(_Controller);
+                if (!_Controller.Get_Snapshot().IsReady)
+                {
+                    if (FPlatformTime::Seconds() < _Deadline)
+                    { return false; }
+                    _Test->AddError(TEXT("ProcDump did not attach before the ready-shutdown test deadline."));
+                    return true;
+                }
+            }
+
+            _Controller.Shutdown();
+            const auto Stopped = _Controller.Get_Snapshot();
+            _Test->TestFalse(TEXT("real shutdown completes within approved budget"), Stopped.Get_CleanupIncomplete());
+            _Test->TestFalse(TEXT("worker no longer reported monitoring"), Stopped.IsMonitoring);
+            _Test->TestFalse(TEXT("helper no longer reported pending"), Stopped.IsStopping);
+            _Test->TestTrue(TEXT("real shutdown reports no operational error"), Stopped.LastError.IsEmpty());
+            _Test->TestEqual(TEXT("cancellation launches exactly once"), _CancelLaunches, 1);
+            _Test->TestTrue(TEXT("worker exit independently observed"),
+                _WorkerObservation.IsValid() && !FPlatformProcess::IsProcRunning(_WorkerObservation));
+            _Test->TestTrue(TEXT("helper exit independently observed"),
+                _HelperObservation.IsValid() && !FPlatformProcess::IsProcRunning(_HelperObservation));
+            const auto RepeatedStart = FPlatformTime::Seconds();
+            _Controller.Shutdown();
+            _Test->TestTrue(TEXT("repeated shutdown does not wait another budget"), FPlatformTime::Seconds() - RepeatedStart < 0.5);
+            _Test->TestEqual(TEXT("repeated shutdown never relaunches cancellation"), _CancelLaunches, 1);
+            if (!_WaitForReady && !Stopped.Get_CleanupIncomplete())
+            {
+                FPlatformProcess::CloseProc(_WorkerObservation);
+                FPlatformProcess::CloseProc(_HelperObservation);
+                _WaitForReady = true;
+                _Started = false;
+                _CancelLaunches = 0;
+                return false;
+            }
+            return true;
+        }
+
+    private:
+        FAutomationTestBase* _Test = nullptr;
+        FString _Path;
+        bool _WaitForReady = false;
+        bool _Started = false;
+        double _Deadline = 0.0;
+        int32 _CancelLaunches = 0;
+        FCkHangMonitorController _Controller;
+        FProcHandle _WorkerObservation;
+        FProcHandle _HelperObservation;
+    };
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkHangMonitor_OptInShutdown,
+    "Ck.TenetIntegrity.HangMonitor.OptInImmediateAndReadyShutdown",
+    ck_hang_monitor_tests::kTestFlags | EAutomationTestFlags::NonNullRHI)
+
+auto
+    FCkHangMonitor_OptInShutdown::
+    RunTest(
+        const FString&)
+    -> bool
+{
+    const auto Path = FPlatformMisc::GetEnvironmentVariable(TEXT("CK_HANG_MONITOR_PROCDUMP"));
+    if (Path.IsEmpty())
+    {
+        AddWarning(TEXT("NOT EXERCISED: real ProcDump immediate/ready shutdown requires CK_HANG_MONITOR_PROCDUMP."));
+        return true;
+    }
+    if (!IFileManager::Get().FileExists(*Path))
+    {
+        AddError(TEXT("CK_HANG_MONITOR_PROCDUMP does not name an existing executable."));
+        return false;
+    }
+    const auto ModuleSnapshot = FCkHangMonitorModule::Get().Get_Controller().Get_Snapshot();
+    if (ModuleSnapshot.IsMonitoring || ModuleSnapshot.IsStopping)
+    {
+        AddError(TEXT("Real ProcDump shutdown tests require an inactive module controller."));
+        return false;
+    }
+    ADD_LATENT_AUTOMATION_COMMAND(ck_hang_monitor_tests::FCk_Latent_HangMonitorShutdown(this, Path));
+    return true;
+}
+
+#endif
