@@ -2096,12 +2096,10 @@ auto SCkVisualLodDebuggerWindow::DoPublish_CrowdTunerRecords() -> void
         CrowdRecord.Children.Add(TEXT("bands"), MoveTemp(Bands)); Records.Add(MoveTemp(CrowdRecord));
     }
     const FCkUiLoadResult PublishResult = _CrowdTunersCollection->TrySetRecords(MoveTemp(Records));
-    const bool Published = PublishResult.Succeeded;
-    CK_ENSURE_IF_NOT(Published,
+    CK_ENSURE_IF_NOT(PublishResult.Succeeded,
         TEXT("Cannot publish authored Visual LOD crowd tuners: {}"),
         FString::Join(PublishResult.Errors, TEXT("; ")))
-    {}
-    if (!Published) { return; }
+    { return; }
 }
 
 auto
