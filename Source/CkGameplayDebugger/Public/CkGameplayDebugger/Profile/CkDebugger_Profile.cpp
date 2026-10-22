@@ -185,3 +185,32 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+auto
+    UCk_GameplayDebugger_DebugProfile_PDA::
+    Get_HasValidRequiredEntries() const
+    -> bool
+{
+    for (const auto& Submenu : _Submenus)
+    {
+        if (ck::Is_NOT_Valid(Submenu))
+        { return false; }
+    }
+    for (const auto& Filter : _Filters)
+    {
+        if (ck::Is_NOT_Valid(Filter))
+        { return false; }
+
+        for (const auto& Action : Filter->Get_FilterDebugActions())
+        {
+            if (ck::Is_NOT_Valid(Action))
+            { return false; }
+        }
+    }
+    for (const auto& Action : _GlobalActions)
+    {
+        if (ck::Is_NOT_Valid(Action))
+        { return false; }
+    }
+    return true;
+}

@@ -23,6 +23,7 @@
 #include "CkInput/CkInput_Utils.h"
 
 #include <GameFramework/PlayerController.h>
+#include <Templates/UnrealTemplate.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -42,6 +43,28 @@ ACk_GameplayDebugger_DebugBridge_UE::
     GameplayDebugger->_OnCollectDataDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_CollectData);
     GameplayDebugger->_OnDrawDataDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_DrawData);
 #endif
+}
+
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    EndPlay(
+        const EEndPlayReason::Type InEndPlayReason)
+    -> void
+{
+#if WITH_GAMEPLAY_DEBUGGER
+    CK_ENSURE_IF_NOT(NOT _IsProfileTransitionActive,
+        TEXT("GameplayDebugger profile lifecycle callbacks must not destroy their owning bridge."))
+    {
+        Super::EndPlay(InEndPlayReason);
+        return;
+    }
+#if !CK_DISABLE_ENSURE_CHECKS
+    const auto TransitionScope = TGuardValue<bool>{_IsProfileTransitionActive, true};
+#endif
+    _IsCategoryActive = false;
+    DoUnloadLoadedProfile();
+#endif
+    Super::EndPlay(InEndPlayReason);
 }
 
 auto
@@ -91,15 +114,27 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
+    CK_ENSURE_IF_NOT(NOT _IsProfileTransitionActive,
+        TEXT("GameplayDebugger profile lifecycle callbacks must not request nested profile transitions."))
+    { return; }
+#if !CK_DISABLE_ENSURE_CHECKS
+    const auto TransitionScope = TGuardValue<bool>{_IsProfileTransitionActive, true};
+#endif
+
     CK_ENSURE_IF_NOT(ck::IsValid(InDebugProfile), TEXT("Invalid GameplayDebugger Debug Profile to load!"))
     { return; }
 
-    if (ck::IsValid(_CurrentlyLoadedDebugProfile))
-    {
-        UnloadCurrentDebugProfile();
-    }
+    CK_ENSURE_IF_NOT(InDebugProfile->Get_HasValidRequiredEntries(),
+        TEXT("GameplayDebugger Debug Profile contains an invalid required entry."))
+    { return; }
 
-    _CurrentlyLoadedDebugProfile = UCk_Utils_Object_UE::Request_CloneObject(InDebugProfile, InDebugProfile);
+    auto ReplacementProfile = UCk_Utils_Object_UE::Request_CloneObject(this, InDebugProfile);
+    CK_ENSURE_IF_NOT(ck::IsValid(ReplacementProfile), TEXT("Unable to clone GameplayDebugger Debug Profile."))
+    { return; }
+
+    DoUnloadLoadedProfile();
+    _CurrentlyLoadedDebugProfile = ReplacementProfile;
+    DoActivateLoadedProfile();
 #endif
 }
 
@@ -109,16 +144,25 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
+    CK_ENSURE_IF_NOT(NOT _IsProfileTransitionActive,
+        TEXT("GameplayDebugger profile lifecycle callbacks must not request nested profile transitions."))
     { return; }
+#if !CK_DISABLE_ENSURE_CHECKS
+    const auto TransitionScope = TGuardValue<bool>{_IsProfileTransitionActive, true};
+#endif
 
-    if (ck::IsValid(_DebugWidget))
-    {
-        _DebugWidget->RemoveFromParent();
-        _DebugWidget = nullptr;
-    }
-    _DebugWidgetVisibilityBeforeDiagnosticSuppression.Reset();
+    DoUnloadLoadedProfile();
+#endif
+}
 
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    DoUnloadLoadedProfile()
+    -> void
+{
+#if WITH_GAMEPLAY_DEBUGGER
+    DoDeactivateLoadedProfile();
+    DoResetProfileSelection();
     _CurrentlyLoadedDebugProfile = nullptr;
 #endif
 }
@@ -129,8 +173,31 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
+    CK_ENSURE_IF_NOT(NOT _IsProfileTransitionActive,
+        TEXT("GameplayDebugger profile lifecycle callbacks must not request nested profile transitions."))
+    { return; }
+#if !CK_DISABLE_ENSURE_CHECKS
+    const auto TransitionScope = TGuardValue<bool>{_IsProfileTransitionActive, true};
+#endif
+
+    _IsCategoryActive = true;
+    DoActivateLoadedProfile();
+#endif
+}
+
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    DoActivateLoadedProfile()
+    -> void
+{
+#if WITH_GAMEPLAY_DEBUGGER
+    if (NOT _IsCategoryActive || _IsProfileActive)
+    { return; }
+
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
+
+    _IsProfileActive = true;
 
     if (const auto& DebugWidgetToCreate = _CurrentlyLoadedDebugProfile->Get_HUD_DebugWidget();
         ck::IsValid(DebugWidgetToCreate))
@@ -175,8 +242,31 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
+    CK_ENSURE_IF_NOT(NOT _IsProfileTransitionActive,
+        TEXT("GameplayDebugger profile lifecycle callbacks must not request nested profile transitions."))
+    { return; }
+#if !CK_DISABLE_ENSURE_CHECKS
+    const auto TransitionScope = TGuardValue<bool>{_IsProfileTransitionActive, true};
+#endif
+
+    _IsCategoryActive = false;
+    DoDeactivateLoadedProfile();
+#endif
+}
+
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    DoDeactivateLoadedProfile()
+    -> void
+{
+#if WITH_GAMEPLAY_DEBUGGER
+    if (NOT _IsProfileActive)
+    { return; }
+
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
+
+    _IsProfileActive = false;
 
     if (ck::IsValid(_DebugWidget))
     {
@@ -202,6 +292,18 @@ auto
         InGlobalAction->DeactivateAction();
     });
 #endif
+}
+
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    DoResetProfileSelection()
+    -> void
+{
+    _CurrentlySelectedActorIndex = 0;
+    _CurrentlySelectedFilterIndex = 0;
+    _CurrentWorldToUseIndex = 0;
+    _PreviouslySelectedActor.Reset();
+    _SelectedDebugActor.Reset();
 }
 
 auto
@@ -301,37 +403,44 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    if (InPreviousFilterIndex == InNewFilterIndex)
+    CK_ENSURE_IF_NOT(NOT _IsProfileTransitionActive,
+        TEXT("GameplayDebugger profile lifecycle callbacks must not request nested profile transitions."))
+    { return; }
+#if !CK_DISABLE_ENSURE_CHECKS
+    const auto TransitionScope = TGuardValue<bool>{_IsProfileTransitionActive, true};
+#endif
+
+    CK_ENSURE_IF_NOT(ck::IsValid(_CurrentlyLoadedDebugProfile), TEXT("Cannot change filter without a debug profile."))
     { return; }
 
     const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
+    if (DebugFilters.IsEmpty())
+    { return; }
 
+    CK_ENSURE_IF_NOT(DebugFilters.IsValidIndex(InPreviousFilterIndex), TEXT("Invalid previous debug filter index."))
+    { return; }
+
+    const auto NewFilterIndex = ((InNewFilterIndex % DebugFilters.Num()) + DebugFilters.Num()) % DebugFilters.Num();
     const auto& PreviousFilter = DebugFilters[InPreviousFilterIndex];
-
-    CK_ENSURE_IF_NOT(ck::IsValid(PreviousFilter), TEXT("Attempting to change the filter but encountered a null filter. "
-        "It's possible the filter asset did not load (deleted/corrupted). Please check project settings for the default filter(s).{}"),
-        ck::Context(this))
+    const auto& NewFilter = DebugFilters[NewFilterIndex];
+    CK_ENSURE_IF_NOT(ck::IsValid(PreviousFilter), TEXT("Invalid previous debug filter."))
+    { return; }
+    CK_ENSURE_IF_NOT(ck::IsValid(NewFilter), TEXT("Invalid replacement debug filter."))
     { return; }
 
-    PreviousFilter->DeactivateFilter();
-
-    _CurrentlySelectedFilterIndex = InNewFilterIndex;
-    _CurrentlySelectedFilterIndex = _CurrentlySelectedFilterIndex % DebugFilters.Num();
-
-    if (_CurrentlySelectedFilterIndex < 0)
-    {
-        _CurrentlySelectedFilterIndex += DebugFilters.Num();
-        _CurrentlySelectedActorIndex = 0;
-    }
-
-    const auto& NewFilter = DebugFilters[_CurrentlySelectedFilterIndex];
-
-    CK_ENSURE_IF_NOT(ck::IsValid(NewFilter), TEXT("Attempting to change the filter but encountered a null filter. "
-        "It's possible the filter asset did not load (deleted/corrupted). Please check project settings for the default filter(s).{}"),
-        ck::Context(this))
+    if (InPreviousFilterIndex == NewFilterIndex)
     { return; }
 
-    NewFilter->ActivateFilter();
+    if (_IsProfileActive)
+    { PreviousFilter->DeactivateFilter(); }
+
+    _CurrentlySelectedFilterIndex = NewFilterIndex;
+    _CurrentlySelectedActorIndex = 0;
+    _PreviouslySelectedActor.Reset();
+    _SelectedDebugActor.Reset();
+
+    if (_IsProfileActive)
+    { NewFilter->ActivateFilter(); }
 #endif
 }
 
@@ -380,6 +489,9 @@ auto
     DoHandleFilterChanges(OwnerPC, DebugNavControls);
     DoHandleWorldChange(OwnerPC, DebugNavControls, InDrawData.Get_AvailableWorlds());
 
+    CK_ENSURE_IF_NOT(DebugFilters.IsValidIndex(_CurrentlySelectedFilterIndex), TEXT("Invalid selected debug filter index."))
+    { return; }
+
     const auto& CurrentlySelectedFilter = DebugFilters[_CurrentlySelectedFilterIndex];
 
     DoHandleFilterActionActivationToggling(OwnerPC, DebugNavControls, CurrentlySelectedFilter);
@@ -387,7 +499,13 @@ auto
     if (ck::Is_NOT_Valid(CurrentlySelectedFilter))
     { return; }
 
-    const auto CurrentWorldToUse = InDrawData.Get_AvailableWorlds()[_CurrentWorldToUseIndex];
+    const auto& AvailableWorlds = InDrawData.Get_AvailableWorlds();
+    if (AvailableWorlds.IsEmpty())
+    { return; }
+
+    const auto CurrentWorldToUse = AvailableWorlds[_CurrentWorldToUseIndex];
+    if (ck::Is_NOT_Valid(CurrentWorldToUse))
+    { return; }
     {
         // followed GameplayDebuggerLocalController:307
         const auto NetModeText = [&]() -> FString
@@ -716,24 +834,13 @@ auto
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
 
-    const auto CurrentSelectedFilterIndexCopy = _CurrentlySelectedFilterIndex;
-
     if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_NextFilterKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex + 1);
-
-        if (CurrentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
-        {
-            _CurrentlySelectedActorIndex = 0;
-        }
     }
     else if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_PreviousFilterKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex - 1);
-        if (CurrentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
-        {
-            _CurrentlySelectedActorIndex = 0;
-        }
     }
 #endif
 }
@@ -750,6 +857,13 @@ auto
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
 
+    if (InAvailableWorlds.IsEmpty())
+    { return; }
+
+    const auto PreviousWorldIndex = _CurrentWorldToUseIndex;
+    if (NOT InAvailableWorlds.IsValidIndex(_CurrentWorldToUseIndex))
+    { _CurrentWorldToUseIndex = 0; }
+
     if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_NextWorldKey()))
     {
         _CurrentWorldToUseIndex = UCk_Utils_Arithmetic_UE::Get_Increment_WithWrap(_CurrentWorldToUseIndex,
@@ -764,6 +878,9 @@ auto
     {
         const auto SelectedWorldIndex = InAvailableWorlds.IndexOfByPredicate([&](const TWeakObjectPtr<UWorld>& InWorld)
         {
+            if (ck::Is_NOT_Valid(InWorld) || ck::Is_NOT_Valid(InAvailableWorlds[_CurrentWorldToUseIndex]))
+            { return false; }
+
             const auto CurrentWorldNetMode = InAvailableWorlds[_CurrentWorldToUseIndex]->GetNetMode();
 
             if (CurrentWorldNetMode == NM_Client)
@@ -783,6 +900,12 @@ auto
 
         if (SelectedWorldIndex != INDEX_NONE)
         { _CurrentWorldToUseIndex = SelectedWorldIndex; }
+    }
+    if (PreviousWorldIndex != _CurrentWorldToUseIndex)
+    {
+        _CurrentlySelectedActorIndex = 0;
+        _PreviouslySelectedActor.Reset();
+        _SelectedDebugActor.Reset();
     }
 #endif
 }

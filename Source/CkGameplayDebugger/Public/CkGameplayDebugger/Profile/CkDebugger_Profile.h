@@ -16,6 +16,10 @@ class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_DebugProfile_PDA : public UCk_
 public:
     CK_GENERATED_BODY(UCk_GameplayDebugger_DebugProfile_PDA);
 
+    friend struct FCk_DebuggerProfile_TestAccess;
+
+    auto Get_HasValidRequiredEntries() const -> bool;
+
 protected:
     auto PreSave(FObjectPreSaveContext InObjectSaveContext) -> void override;
 public:

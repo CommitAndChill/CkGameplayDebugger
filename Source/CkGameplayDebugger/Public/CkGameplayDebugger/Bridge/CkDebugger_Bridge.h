@@ -26,6 +26,7 @@ public:
     ACk_GameplayDebugger_DebugBridge_UE();
 
     auto Tick(float InDeltaSeconds) -> void override;
+    auto EndPlay(const EEndPlayReason::Type InEndPlayReason) -> void override;
 
 public:
     auto LoadNewDebugProfile(class UCk_GameplayDebugger_DebugProfile_PDA* InDebugProfile) -> void;
@@ -50,6 +51,13 @@ private:
         const FCk_Payload_GameplayDebugger_OnDrawData& InPayload);
 
 private:
+    friend struct FCk_DebuggerProfile_TestAccess;
+
+    auto DoUnloadLoadedProfile() -> void;
+    auto DoActivateLoadedProfile() -> void;
+    auto DoDeactivateLoadedProfile() -> void;
+    auto DoResetProfileSelection() -> void;
+
     auto DoActivateCurrentlySelectedFilter() const -> void;
     auto DoDeactivateCurrentlySelectedFilter() const -> void;
     auto DoUpdateDebugWidgetDiagnosticVisibility() -> void;
@@ -112,6 +120,12 @@ private:
     TWeakObjectPtr<AActor> _SelectedDebugActor;
 
 private:
+#if !CK_DISABLE_ENSURE_CHECKS
+    bool _IsProfileTransitionActive = false;
+#endif
+    bool _IsCategoryActive = false;
+    bool _IsProfileActive = false;
+
     int32 _CurrentlySelectedActorIndex = 0;
     int32 _CurrentlySelectedFilterIndex = 0;
 

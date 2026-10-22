@@ -48,6 +48,8 @@ protected:
     auto UpdateFilterName(FName InNewFilterName) -> void;
 
 private:
+    friend struct FCk_DebuggerProfile_TestAccess;
+
     // Name of the filter displayed on screen when it is active
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
               meta = (AllowPrivateAccess = true))

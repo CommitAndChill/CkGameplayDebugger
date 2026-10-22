@@ -52,6 +52,9 @@ protected:
         const FCk_GameplayDebugger_DrawSubmenuData_Params& InParams);
 
 private:
+    bool _IsActive = false;
+
+private:
     // Name of the submenu displayed on screen when it is active
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
               meta = (AllowPrivateAccess = true))

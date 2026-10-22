@@ -16,6 +16,10 @@ auto
     ActivateSubmenu()
     -> void
 {
+    if (_IsActive)
+    { return; }
+
+    _IsActive = true;
     DoActivateSubmenu();
 }
 
@@ -24,6 +28,10 @@ auto
     DeactivateSubmenu()
     -> void
 {
+    if (NOT _IsActive)
+    { return; }
+
+    _IsActive = false;
     DoDeactivateSubmenu();
 }
 
