@@ -45,6 +45,13 @@
       "reason": "Renderer pass: Routed All Tones click does not update the production sample or its checkbox (CkStyleLab_WindowAuthored.spec.cpp:208/210). Oscillates alone (green once, red on the G2 re-run); listed red on purpose so a pass only prints 'Now passing'.",
       "evidence": "CkPlugins at the cleaned Ck dev tips (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba), UnrealToolbox v1.52, judged full gates G1+G2 on one build 2026-10-02 (3972 run; 30 / 29 red): gates FF, solo GREEN then RED",
       "added": "2026-10-02"
+    },
+    {
+      "test": "Ck.UiAuthoring.EcsDebugger.FogOfWarInspector.AuthoredComposition",
+      "status": "red",
+      "reason": "UE 5.8: renderer-only. Expected 'physical editor commits update only A staging and release the shared edit guard' to be true (CkInspectorFogOfWarAuthored.spec.cpp:275). Passed on 5.7 (CkPlugins gates 2026-10-01/02). Cause not traced.",
+      "evidence": "UE 5.8 port: CkPlugins_58 feature/ue58-upgrade 6763e22 (CkFoundation 380c95b52, CkTests f2126686, CkGameplayDebugger 8d10469c), UE 5.8.4 ue58_engine 2b39d4c518d3, UnrealToolbox v1.68; two full gates on one build 2026-10-22/23 (Gate58-Fixed1 4328 run/33 red, Gate58-Fixed2 4328/39): red in both; solo fresh-boot run Solo58-FogOfWarInspector.AuthoredComposition.log 2026-10-23: red.",
+      "added": "2026-10-23"
     }
   ]
 }
