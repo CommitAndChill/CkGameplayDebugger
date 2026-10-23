@@ -683,7 +683,8 @@ namespace ck::perf_lab
 
             for (const auto& Pair : CvarObject->Values)
             {
-                Cvars.Add(Pair.Key, Pair.Value->AsString());
+                // UE 5.8 keys FJsonObject by UE::FSharedString; operator* is the TCHAR* of either key type
+                Cvars.Add(FString(*Pair.Key), Pair.Value->AsString());
             }
 
             Environment.Set_ForcedCvars(Cvars);
