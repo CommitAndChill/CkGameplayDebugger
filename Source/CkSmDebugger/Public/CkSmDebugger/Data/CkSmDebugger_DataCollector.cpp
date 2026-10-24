@@ -8,6 +8,7 @@
 
 #include "CkEcs/ContextOwner/CkContextOwner_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/EntityScript/CkEntityScript_Fragment.h"
 #include "CkEcs/Handle/CkHandle.h"
@@ -70,7 +71,7 @@ auto
     if (ck::Is_NOT_Valid(TransientEntity))
     { return; }
 
-    TransientEntity.View<ck::FFragment_Sm, ck::FFragment_Sm_Params>().ForEach(
+    TransientEntity.View<ck::FFragment_Sm, ck::FFragment_Sm_Params, CK_IGNORE_PENDING_KILL>().ForEach(
         [this, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_Sm&, const ck::FFragment_Sm_Params&)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
