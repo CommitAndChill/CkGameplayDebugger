@@ -23,13 +23,14 @@ namespace ck_insights_capture_tests
     public:
         explicit FCk_Latent_TraceStartStopRoundTrip(FAutomationTestBase* InTest)
             : _Test(InTest)
-            , _TracePath(FPaths::Combine(
+            // Absolute: FTraceAuxiliary re-roots relative paths under ProfilingDir (BaseDir differs in the Shared environment).
+            , _TracePath(FPaths::ConvertRelativePathToFull(FPaths::Combine(
                 FPaths::ProjectSavedDir(),
                 TEXT("Automation"),
                 TEXT("Tmp"),
                 FString::Printf(
                     TEXT("CkInsightsCaptureController-%u.utrace"),
-                    FPlatformProcess::GetCurrentProcessId())))
+                    FPlatformProcess::GetCurrentProcessId()))))
         {
             IFileManager::Get().MakeDirectory(*FPaths::GetPath(_TracePath), true);
             IFileManager::Get().Delete(*_TracePath, false, true);
