@@ -34,9 +34,9 @@
     },
     {
       "test": "Ck.UiAuthoring.StyleLab.InputHudAuthored",
-      "status": "flaky",
-      "reason": "FLAKY: green alone (renderer pass). 'Invalid user-setting draft is rejected without mutation' (CkStyleLab_InputHudAuthored.spec.cpp:373). One of six routed-click UI tests that all failed together in G4's renderer pass (only 2 lanes on a loaded machine; 16 renderer-pass failures vs 10-13 in G1-G3) and all passed in G1-G3 - likely one shared environmental cause. Drop the entry if it never recurs.",
-      "evidence": "CkPlugins at the cleaned Ck dev tips (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba), UnrealToolbox v1.52, judged full gates G1-G4 on one build 2026-10-02 (3972 run; 30/29/28/35 red) + a solo fresh-boot run: gates PPPF, solo GREEN",
+      "status": "red",
+      "reason": "RED on UE 5.8 (listed flaky on 5.7, where it was green alone). Expected 'Compatible reload advances revision while retaining focused numeric editor and preview' (CkStyleLab_InputHudAuthored.spec.cpp:467) and 'Rejected reload retains accepted draft editor preview and revision' (:481) to be true: a focused numeric editor's draft and preview do not survive a reload on 5.8. Cause not traced; the 5.8 Slate text-attribute changes (nested attributes, prepass-dependent reads) are the lead. 5.7 history: flaky on ':373 Invalid user-setting draft is rejected without mutation'.",
+      "evidence": "UE 5.8 port: red in-suite in every CkPlugins_58 5.8 gate - Gate58-Fixed1 and Gate58-Fixed2 (tree 6763e22, 2026-10-22/23), Gate58-Verify (c5e2e54, 2026-10-23), Gate58-Verify2 (e7cd2d2, 2026-10-24) - and red again on the toolbox's re-run alone after Gate58-Verify2 (2026-10-25 01:04:59 UTC, Gate58-Verify2-keep.log); also red in BusterBlock_58 Gate58-Verify2 and Gate58-Verify3 renderer passes. UE 5.8.4, UnrealToolbox v1.68. 5.7 evidence kept: 2026-10-02 gates PPPF, solo GREEN (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba, toolbox v1.52).",
       "added": "2026-10-02"
     },
     {
