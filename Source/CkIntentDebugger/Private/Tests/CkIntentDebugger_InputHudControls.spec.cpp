@@ -1,5 +1,6 @@
 #include "CkIntentDebugger/Window/SCkIntentDebugger_InputHudControls.h"
 
+#include "CkCore/Validation/CkIsValid.h"
 #include "CkInputHudOverlay/Settings/CkInputHud_Settings.h"
 #include "CkInputHudOverlay/Settings/CkInputHud_UserSettings.h"
 #include "CkSlateLayout/SCkUiSurface.h"
@@ -138,23 +139,60 @@ namespace ck_intent_debugger_input_hud_controls_tests
         }
     }
 
-    auto Click(FSlateApplication& InSlate, const TSharedRef<SWidget>& InWidget) -> bool
+    auto
+        Click(
+            FAutomationTestBase& InTest,
+            FSlateApplication& InSlate,
+            const TSharedRef<SWidget>& InWidget)
+        -> bool
     {
-        const FGeometry Geometry = InWidget->GetCachedGeometry();
-        const TSharedPtr<SWindow> Window = InSlate.FindWidgetWindow(InWidget);
-        if (!Window.IsValid() || !Window->GetNativeWindow().IsValid() || Geometry.GetLocalSize().X <= 0.0f || Geometry.GetLocalSize().Y <= 0.0f) { return false; }
+        const auto Geometry = InWidget->GetCachedGeometry();
+        const auto Window = InSlate.FindWidgetWindow(InWidget);
+        if (ck::Is_NOT_Valid(Window) || ck::Is_NOT_Valid(Window->GetNativeWindow())
+            || Geometry.GetLocalSize().X <= 0.0f || Geometry.GetLocalSize().Y <= 0.0f)
+        {
+            InTest.AddError(FString::Printf(TEXT("Mounted click has no usable window or geometry: tag=%s window=%d native=%d cached=%s..%s"),
+                *InWidget->GetTag().ToString(), ck::IsValid(Window), ck::IsValid(Window) && ck::IsValid(Window->GetNativeWindow()),
+                *Geometry.LocalToAbsolute(FVector2D::ZeroVector).ToString(),
+                *Geometry.LocalToAbsolute(Geometry.GetLocalSize()).ToString()));
+            return false;
+        }
         const FVector2D Position = Geometry.LocalToAbsolute(Geometry.GetLocalSize() * 0.5f);
         const TSet<FKey> NoButtons;
         const TSet<FKey> LeftDown{EKeys::LeftMouseButton};
-        const FPointerEvent Move(0, FSlateApplication::CursorPointerIndex, Position, Position, NoButtons, EKeys::Invalid, 0.0f, FModifierKeysState{});
-        const FPointerEvent Down(0, FSlateApplication::CursorPointerIndex, Position, Position, LeftDown, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{});
-        const FPointerEvent Up(0, FSlateApplication::CursorPointerIndex, Position, Position, NoButtons, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{});
+        const FPointerEvent Move{0, FSlateApplication::CursorPointerIndex, Position, Position, NoButtons, EKeys::Invalid, 0.0f, FModifierKeysState{}};
+        const FPointerEvent Down{0, FSlateApplication::CursorPointerIndex, Position, Position, LeftDown, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{}};
+        const FPointerEvent Up{0, FSlateApplication::CursorPointerIndex, Position, Position, NoButtons, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{}};
         InSlate.SetCursorPos(Position);
-        InSlate.ProcessMouseMoveEvent(Move, true);
-        const bool bHandled = InSlate.ProcessMouseButtonDownEvent(Window->GetNativeWindow(), Down);
-        InSlate.ProcessMouseButtonUpEvent(Up);
+        constexpr auto IsSyntheticMove = true;
+        InSlate.ProcessMouseMoveEvent(Move, IsSyntheticMove);
+        const auto ContainsTarget = [&InWidget](const FWidgetPath& InPath)
+        {
+            for (auto Index = int32{0}; Index < InPath.Widgets.Num(); ++Index)
+            {
+                if (InPath.Widgets[Index].Widget == InWidget)
+                { return true; }
+            }
+            return false;
+        };
+        constexpr auto IgnoreEnabledStatus = false;
+        const auto DownPath = InSlate.LocateWindowUnderMouse(Position, InSlate.GetInteractiveTopLevelWindows(), IgnoreEnabledStatus, 0);
+        const auto DownHandled = InSlate.ProcessMouseButtonDownEvent(Window->GetNativeWindow(), Down);
+        const auto Captured = InWidget->HasMouseCapture();
+        const auto UpPath = InSlate.LocateWindowUnderMouse(Position, InSlate.GetInteractiveTopLevelWindows(), IgnoreEnabledStatus, 0);
+        const auto UpHandled = InSlate.ProcessMouseButtonUpEvent(Up);
+        const auto Succeeded = ContainsTarget(DownPath) && DownHandled && Captured && ContainsTarget(UpPath) && UpHandled;
+        if (NOT Succeeded)
+        {
+            InTest.AddError(FString::Printf(TEXT("Mounted click did not reach its requested control: tag=%s position=%s cached=%s..%s down-target=%d leaf=%s down=%d capture=%d up-target=%d up=%d"),
+                *InWidget->GetTag().ToString(), *Position.ToString(),
+                *Geometry.LocalToAbsolute(FVector2D::ZeroVector).ToString(),
+                *Geometry.LocalToAbsolute(Geometry.GetLocalSize()).ToString(), ContainsTarget(DownPath),
+                DownPath.Widgets.Num() == 0 ? TEXT("<none>") : *DownPath.Widgets.Last().Widget->GetTypeAsString(),
+                DownHandled, Captured, ContainsTarget(UpPath), UpHandled));
+        }
         Tick(InSlate);
-        return bHandled;
+        return Succeeded;
     }
 
     auto Capture(FSlateApplication& InSlate, const TSharedRef<SWidget>& InRoot, const FString& InPath) -> bool
@@ -287,8 +325,14 @@ auto FCkIntentDebugger_InputHudControlsAuthored::RunTest(const FString&) -> bool
         if (!TestTrue(*FString::Printf(TEXT("%s reopens the combo before dispatch"), *NextId), EnsureOpen())) { return false; }
         const int64 ValueBefore = GetReadoutValue(Cycle);
         const uint32 RevisionBefore = UCk_InputHud_UserSettings::Get_Revision();
-        if (!TestTrue(*FString::Printf(TEXT("%s routes through the mounted menu-hosted control"), *NextId), Click(Slate, Next.ToSharedRef()))) { return false; }
-        TestTrue(*FString::Printf(TEXT("%s changes and publishes its user setting"), *NextId), GetReadoutValue(Cycle) != ValueBefore && UCk_InputHud_UserSettings::Get_Revision() > RevisionBefore);
+        const auto MenuOpenBefore = MenuHost->IsOpen();
+        const auto Clicked = Click(*this, Slate, Next.ToSharedRef());
+        if (NOT TestTrue(*FString::Printf(TEXT("%s routes through the mounted menu-hosted control"), *NextId), Clicked))
+        { return false; }
+        TestTrue(*FString::Printf(TEXT("%s changes and publishes its user setting: menu-before=%d menu-after=%d dispatch-open=%d value-before=%lld value-after=%lld revision-before=%u revision-after=%u"),
+            *NextId, MenuOpenBefore, MenuHost->IsOpen(), *IsMenuOpen, ValueBefore, GetReadoutValue(Cycle),
+            RevisionBefore, UCk_InputHud_UserSettings::Get_Revision()),
+            GetReadoutValue(Cycle) != ValueBefore && UCk_InputHud_UserSettings::Get_Revision() > RevisionBefore);
     }
 
     const TSharedPtr<SButton> ModeNext = FindButton(Region, TEXT("intent-hud-mode-next"));
@@ -303,10 +347,12 @@ auto FCkIntentDebugger_InputHudControlsAuthored::RunTest(const FString&) -> bool
         const float AnchorYBeforeMissingCVar = UCk_InputHud_UserSettings::Get_AnchorOffsetY();
         Scroll->ScrollDescendantIntoView(ModeNext.ToSharedRef(), false, EDescendantScrollDestination::IntoView);
         Tick(Slate);
-        if (!TestTrue(TEXT("Missing-CVar mode action remains safely dispatchable"), EnsureOpen() && Click(Slate, ModeNext.ToSharedRef()))) { return false; }
+        if (NOT TestTrue(TEXT("Missing-CVar mode action remains safely dispatchable"), EnsureOpen() && Click(*this, Slate, ModeNext.ToSharedRef())))
+        { return false; }
         Scroll->ScrollDescendantIntoView(CornerNext.ToSharedRef(), false, EDescendantScrollDestination::IntoView);
         Tick(Slate);
-        if (!TestTrue(TEXT("Missing-CVar corner action remains safely dispatchable"), EnsureOpen() && Click(Slate, CornerNext.ToSharedRef()))) { return false; }
+        if (NOT TestTrue(TEXT("Missing-CVar corner action remains safely dispatchable"), EnsureOpen() && Click(*this, Slate, CornerNext.ToSharedRef())))
+        { return false; }
         Scroll->ScrollDescendantIntoView(SessionScale.ToSharedRef(), false, EDescendantScrollDestination::IntoView);
         Tick(Slate);
         if (!TestTrue(TEXT("Missing-CVar numeric commit remains a valid no-op"), EnsureOpen() && ReplaceAndCommit(Slate, SessionScale.ToSharedRef(), TEXT("1.25")))) { return false; }
@@ -424,7 +470,8 @@ auto FCkIntentDebugger_InputHudControlsAuthored::RunTest(const FString&) -> bool
     Tick(Slate);
     if (!TestTrue(TEXT("Frame-number checkbox reopens the combo before dispatch"), EnsureOpen())) { return false; }
     const bool FramesBefore = UCk_InputHud_Settings::Get_ShowFrameNumbers();
-    if (!TestTrue(TEXT("Frame-number checkbox routes through mounted control"), Click(Slate, Frames.ToSharedRef()))) { return false; }
+    if (NOT TestTrue(TEXT("Frame-number checkbox routes through mounted control"), Click(*this, Slate, Frames.ToSharedRef())))
+    { return false; }
     TestEqual(TEXT("Frame-number checkbox changes project state"), UCk_InputHud_Settings::Get_ShowFrameNumbers(), !FramesBefore);
 
     const TSharedPtr<SButton> Reset = FindButton(Region, TEXT("intent-hud-reset-readout"));
@@ -437,7 +484,8 @@ auto FCkIntentDebugger_InputHudControlsAuthored::RunTest(const FString&) -> bool
     const bool FramesBeforeReset = UCk_InputHud_Settings::Get_ShowFrameNumbers();
     if (Reset.IsValid()) { Scroll->ScrollDescendantIntoView(Reset.ToSharedRef(), false, EDescendantScrollDestination::IntoView); Tick(Slate); }
     if (!TestTrue(TEXT("Readout reset reopens the combo before dispatch"), EnsureOpen())) { return false; }
-    if (!TestTrue(TEXT("Authored readout reset mounts"), Reset.IsValid() && Click(Slate, Reset.ToSharedRef()))) { return false; }
+    if (NOT TestTrue(TEXT("Authored readout reset mounts"), Reset.IsValid() && Click(*this, Slate, Reset.ToSharedRef())))
+    { return false; }
     TestTrue(TEXT("Readout reset restores only readout defaults and preserves other production domains"), UCk_InputHud_UserSettings::Get_MetadataMode() == ECk_InputHud_MetadataMode::Full
         && UCk_InputHud_UserSettings::Get_FrameNotation() == ECk_InputHud_FrameNotation::Delta
         && UCk_InputHud_UserSettings::Get_AnchorCorner() == AnchorCornerBeforeReset
@@ -534,7 +582,8 @@ auto FCkIntentDebugger_InputHudControlsAuthored::RunTest(const FString&) -> bool
     Scroll->ScrollDescendantIntoView(CurrentAction.ToSharedRef(), false, EDescendantScrollDestination::IntoView);
     Tick(Slate);
     const auto MetadataBeforeLiveAction = UCk_InputHud_UserSettings::Get_MetadataMode();
-    if (!TestTrue(TEXT("Current action reopens the combo before live dispatch"), EnsureOpen() && Click(Slate, CurrentAction.ToSharedRef()))) { return false; }
+    if (NOT TestTrue(TEXT("Current action reopens the combo before live dispatch"), EnsureOpen() && Click(*this, Slate, CurrentAction.ToSharedRef())))
+    { return false; }
     TestTrue(TEXT("Current post-reload metadata action is live"), UCk_InputHud_UserSettings::Get_MetadataMode() != MetadataBeforeLiveAction);
 
     const TSharedPtr<SEditableTextBox> HeldEditor = FindEditor(Region, TEXT("intent-hud-tap-hold-ms-input"));
