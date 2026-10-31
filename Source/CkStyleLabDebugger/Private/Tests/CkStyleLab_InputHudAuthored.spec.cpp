@@ -453,6 +453,8 @@ auto FCkStyleLab_InputHudAuthored::RunTest(const FString&) -> bool
     Slate.SetUserFocus(0, Draft.ToSharedRef(), EFocusCause::SetDirectly);
     Tick(Slate);
     Slate.ProcessKeyCharEvent(FCharacterEvent{TEXT('5'), FModifierKeysState{}, 0, false});
+    // Refresh the native text attribute before capturing the typed draft for reload comparisons.
+    Draft->SlatePrepass(1.0f);
     const FString DraftText = Draft->GetText().ToString();
     const TSharedPtr<SWidget> Focus = Slate.GetUserFocusedWidget(0);
     const int64 Revision = View->GetRevision();

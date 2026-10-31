@@ -114,8 +114,11 @@ auto FCkTextureDebugger_MaterialInputs_Authored::RunTest(const FString&) -> bool
     auto Searches = TArray<TSharedPtr<SSearchBox>>{};
     Find_SearchBoxes(Page, Searches);
     if (!TestEqual(TEXT("Material Inputs exposes two real authored search controls"), Searches.Num(), 2)) { return false; }
+    // Native hint attributes refresh during Slate prepass before their cached values are observed.
+    Searches[0]->SlatePrepass(1.0f);
     TestTrue(TEXT("Filter hint retains its original localized FText"), Searches[0]->GetHintText().IdenticalTo(
         NSLOCTEXT("SCkTextureDebugger_DiagnosticPages", "MaterialFilter", "Filter parameter, texture, slot, or provenance…")));
+    Searches[1]->SlatePrepass(1.0f);
     TestTrue(TEXT("Highlight hint retains its original localized FText"), Searches[1]->GetHintText().IdenticalTo(
         NSLOCTEXT("SCkTextureDebugger_DiagnosticPages", "MaterialHighlight", "Highlight matches…")));
     Searches[0]->SetText(FText::FromString(TEXT("Unavailable")));
