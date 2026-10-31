@@ -271,6 +271,10 @@ auto FCkInspectorFogOfWarAuthored::RunTest(const FString&) -> bool
             && FMath::IsNearlyEqual(AuthoredA->Get_StagedRadius(), 60.0f)
             && AuthoredB->Get_StagedLocation().IsZero()
             && NOT EditGuard->Get_HasActiveEdit());
+    TestTrue(TEXT("physical commit preserves A location X"), FMath::IsNearlyEqual(AuthoredA->Get_StagedLocation().X, 75.0f));
+    TestTrue(TEXT("physical commit preserves A radius"), FMath::IsNearlyEqual(AuthoredA->Get_StagedRadius(), 60.0f));
+    TestTrue(TEXT("physical commit preserves B location unchanged"), AuthoredB->Get_StagedLocation().IsZero());
+    TestFalse(TEXT("physical commit preserves shared edit guard released"), EditGuard->Get_HasActiveEdit());
 
     RevealAll->SimulateClick();
     TestTrue(TEXT("physical Reveal All queues without mutating the grid before the handler pump"),
