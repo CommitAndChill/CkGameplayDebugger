@@ -44,7 +44,8 @@ namespace ck_texture_debugger_window_authored_tests
 
     auto FindButtonWithText(const TSharedRef<SWidget>& InRoot, const FString& InText) -> TSharedPtr<SButton>
     {
-        if (InRoot->GetTypeAsString() == TEXT("SButton"))
+        const FString WidgetType = InRoot->GetTypeAsString();
+        if (WidgetType == TEXT("SButton") || WidgetType == TEXT("SCkUiTabsHeaderButton"))
         {
             const TSharedRef<SButton> Button = StaticCastSharedRef<SButton>(InRoot);
             if (ContainsText(Button, InText)) { return Button; }
