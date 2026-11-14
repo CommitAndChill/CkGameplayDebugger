@@ -9,6 +9,7 @@
 #include "CkInputHudOverlay/Widgets/SCkInputHud_Root.h"
 
 #include "CkDebuggerCommon/Devices/CkDebug_KeyActivityObserver.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 
@@ -186,6 +187,7 @@ auto
     DoActivate()
     -> void
 {
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     using namespace ck_input_hud_subsystem;
 
     if (_RootWidget.IsValid())
@@ -341,6 +343,7 @@ auto
         float InDeltaSeconds)
     -> bool
 {
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     if (NOT _Model.IsValid() || NOT _RootWidget.IsValid())
     { return true; } // keep ticking; deactivation unregisters us
 

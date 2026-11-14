@@ -3,6 +3,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
 #include "CkEntityDebugOverlay/Layout/CkDebugOverlay_Layout.h"
@@ -30,6 +31,7 @@ auto
     Activate(
         UWorld* InWorld) -> void
 {
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     if (ck::Is_NOT_Valid(InWorld))
     { return; }
 
@@ -101,6 +103,7 @@ auto
         const FCk_Handle&             InFocusEntity,
         const FCkDebug_EntityMarkers& InMarkers) -> void
 {
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     if (NOT _IsActive || NOT _OverlayRoot.IsValid())
     { return; }
 

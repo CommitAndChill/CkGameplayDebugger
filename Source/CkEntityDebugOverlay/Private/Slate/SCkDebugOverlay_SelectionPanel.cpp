@@ -557,4 +557,17 @@ auto SCkDebugOverlay_SelectionPanel::OnKeyDown(const FGeometry& InGeometry, cons
     return FReply::Handled();
 }
 
+auto SCkDebugOverlay_SelectionPanel::OnPaint(
+    const FPaintArgs& InArgs,
+    const FGeometry& InAllottedGeometry,
+    const FSlateRect& InCullingRect,
+    FSlateWindowElementList& OutDrawElements,
+    int32 InLayerId,
+    const FWidgetStyle& InWidgetStyle,
+    bool InParentEnabled) const -> int32
+{
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
+    return SCompoundWidget::OnPaint(InArgs, InAllottedGeometry, InCullingRect, OutDrawElements, InLayerId, InWidgetStyle, InParentEnabled);
+}
+
 // ====================================================================================================================

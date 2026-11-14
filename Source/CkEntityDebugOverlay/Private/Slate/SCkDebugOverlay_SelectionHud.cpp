@@ -66,6 +66,7 @@ auto SCkDebugOverlay_SelectionHud::OnPaint(
     const FWidgetStyle&,
     bool) const -> int32
 {
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     auto Layer = InLayerId;
     const auto ConeColor = CkStyle::OverlayOf(CkStyle::Accent(), 0.78f);
     // Main supplies a sampled cone curve. Painting alternating source segments, rather than

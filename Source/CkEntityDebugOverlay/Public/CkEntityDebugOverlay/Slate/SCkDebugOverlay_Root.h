@@ -49,6 +49,15 @@ public:
     /** Polls the retained authored outer shell. Native overlay mechanics remain in one port. */
     virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
+    virtual auto OnPaint(
+        const FPaintArgs& InArgs,
+        const FGeometry& InAllottedGeometry,
+        const FSlateRect& InCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32 InLayerId,
+        const FWidgetStyle& InWidgetStyle,
+        bool InParentEnabled) const -> int32 override;
+
     /** Makes externally retained views inert before their viewport owner detaches this root. */
     auto Release_OwnerInteractions() -> void;
 

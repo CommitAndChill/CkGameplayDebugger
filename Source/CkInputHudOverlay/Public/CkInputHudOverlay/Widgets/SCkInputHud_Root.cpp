@@ -390,6 +390,22 @@ auto
 
 auto
     SCkInputHud_Root::
+    OnPaint(
+        const FPaintArgs&        InArgs,
+        const FGeometry&         InAllottedGeometry,
+        const FSlateRect&        InCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32                    InLayerId,
+        const FWidgetStyle&      InWidgetStyle,
+        bool                     InParentEnabled) const
+    -> int32
+{
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
+    return SCompoundWidget::OnPaint(InArgs, InAllottedGeometry, InCullingRect, OutDrawElements, InLayerId, InWidgetStyle, InParentEnabled);
+}
+
+auto
+    SCkInputHud_Root::
     Tick(
         const FGeometry& InAllottedGeometry,
         const double     InCurrentTime,
@@ -398,6 +414,7 @@ auto
 {
     using namespace ck_input_hud_root;
 
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (_AuthoredPresentationReleased)
