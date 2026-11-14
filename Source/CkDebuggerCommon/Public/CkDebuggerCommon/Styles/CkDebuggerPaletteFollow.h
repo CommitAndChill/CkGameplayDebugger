@@ -19,6 +19,9 @@ namespace ck::debug_style
         const TSharedRef<FSlateStyleSet>& InLiveStyle,
         FStyleSetFactory InFactory) -> void;
 
+    // Idempotent; a window calls it before rebuilding on a flip so its text styles copy the new palette.
+    CKDEBUGGERCOMMON_API auto Sync_Palette() -> void;
+
     CKDEBUGGERCOMMON_API auto Unfollow_Palette(
         const FSlateStyleSet& InLiveStyle) -> void;
 

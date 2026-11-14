@@ -5,6 +5,7 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerPaletteFollow.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -48,7 +49,7 @@ auto SCkDebugger_WindowBase::Register_WithGate() -> void
 	if (const auto* Settings = UCkDebuggerStyleSettings::Get())
 	{ _LastSeenStyleRevision = Settings->Get_Revision(); }
 
-	_LastSeenLight = CkStyle::IsLight();
+	_LastSeenLight = CkStyle::IsThemeLight();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -81,7 +82,7 @@ auto SCkDebugger_WindowBase::Poll_StyleRevision() -> void
 	{ return; }
 
 	const auto Revision = Settings->Get_Revision();
-	const auto IsLight = CkStyle::IsLight();
+	const auto IsLight = CkStyle::IsThemeLight();
 
 	if (Revision == _LastSeenStyleRevision && IsLight == _LastSeenLight)
 	{ return; }
@@ -89,6 +90,9 @@ auto SCkDebugger_WindowBase::Poll_StyleRevision() -> void
 	_LastSeenStyleRevision = Revision;
 	_LastSeenLight = IsLight;
 
+	ck::debug_style::Sync_Palette();
+
+	const auto Palette = CkStyle::FScopedPalette{IsLight ? ECk_Style_Palette::Light : ECk_Style_Palette::Dark};
 	OnStyleRevisionChanged();
 }
 
