@@ -35,7 +35,11 @@ public:
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Style Lab")); }
     auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
 
+protected:
+    virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
+    auto Build_Content() -> void;
     auto Build_AuthoredShell() -> void;
     auto Build_NativeShellFallback() -> TSharedRef<SWidget>;
     auto Build_MenuActions() -> TSharedRef<SWidget>;
@@ -50,6 +54,7 @@ private:
     TSharedPtr<FCkUiView> _AuthoredShellView;
 
     uint32 _LastSeenRevision = 0;
+    bool   _LastSeenLight = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
