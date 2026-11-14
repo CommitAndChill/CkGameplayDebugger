@@ -35,6 +35,15 @@ public:
     virtual auto OnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
     virtual auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
 
+    virtual auto OnPaint(
+        const FPaintArgs& InArgs,
+        const FGeometry& InAllottedGeometry,
+        const FSlateRect& InCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32 InLayerId,
+        const FWidgetStyle& InWidgetStyle,
+        bool InParentEnabled) const -> int32 override;
+
 private:
     auto Build_PolicySection() -> TSharedRef<SWidget>;
     auto Build_TuningSection() -> TSharedRef<SWidget>;

@@ -67,6 +67,15 @@ public:
         const double     InCurrentTime,
         const float      InDeltaTime) -> void override;
 
+    virtual auto OnPaint(
+        const FPaintArgs&        InArgs,
+        const FGeometry&         InAllottedGeometry,
+        const FSlateRect&        InCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32                    InLayerId,
+        const FWidgetStyle&      InWidgetStyle,
+        bool                     InParentEnabled) const -> int32 override;
+
     auto Release_AuthoredPresentation() -> void;
 
     auto Get_AuthoredView() const -> TSharedPtr<FCkUiView> { return _AuthoredView; }
