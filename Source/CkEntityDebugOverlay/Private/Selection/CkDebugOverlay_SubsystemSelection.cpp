@@ -8,6 +8,7 @@
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_SelectionPanel.h"
 #include "CkDebuggerCommon/Classification/CkDebug_DepthTransparency.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
@@ -550,6 +551,7 @@ auto UCk_DebugOverlay_Subsystem::Update_SelectionHud() -> void
 
 auto UCk_DebugOverlay_Subsystem::DoCmd_Settings() -> void
 {
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     if (_SelectionPanel.IsValid())
     { Close_SelectionSettings(); return; }
     if (NOT FSlateApplication::IsInitialized())
