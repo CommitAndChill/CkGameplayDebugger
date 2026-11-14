@@ -46,8 +46,7 @@ auto
     if (const auto* Settings = UCkDebuggerStyleSettings::Get())
     { _LastSeenRevision = Settings->Get_Revision(); }
 
-    _ControlsPane = SNew(SCkStyleLab_ControlsPane)
-        .OnSelectionChanged(FOnCkStyleLab_SelectionChanged::CreateSP(this, &SCkStyleLabWindow::OnSelectionChanged));
+    _LastSeenLight = CkStyle::IsLight();
     _AuthoredShellHost = SNew(SBox);
 
     ChildSlot
@@ -63,7 +62,27 @@ auto
             [_AuthoredShellHost.ToSharedRef()]
     ];
 
+    Build_Content();
+}
+
+auto SCkStyleLabWindow::Build_Content() -> void
+{
+    _ControlsPane = SNew(SCkStyleLab_ControlsPane)
+        .OnSelectionChanged(FOnCkStyleLab_SelectionChanged::CreateSP(this, &SCkStyleLabWindow::OnSelectionChanged));
+
     Build_AuthoredShell();
+}
+
+auto SCkStyleLabWindow::OnStyleRevisionChanged() -> void
+{
+    // A revision alone is handled by the preview rebuild in Tick; only a palette flip re-bakes the controls.
+    const auto IsLight = CkStyle::IsLight();
+
+    if (IsLight == _LastSeenLight)
+    { return; }
+
+    _LastSeenLight = IsLight;
+    Build_Content();
 }
 
 SCkStyleLabWindow::~SCkStyleLabWindow()
