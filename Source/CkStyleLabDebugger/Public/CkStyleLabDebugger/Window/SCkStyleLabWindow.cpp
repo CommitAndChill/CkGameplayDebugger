@@ -46,7 +46,7 @@ auto
     if (const auto* Settings = UCkDebuggerStyleSettings::Get())
     { _LastSeenRevision = Settings->Get_Revision(); }
 
-    _LastSeenLight = CkStyle::IsLight();
+    _LastSeenLight = CkStyle::IsThemeLight();
     _AuthoredShellHost = SNew(SBox);
 
     ChildSlot
@@ -76,7 +76,7 @@ auto SCkStyleLabWindow::Build_Content() -> void
 auto SCkStyleLabWindow::OnStyleRevisionChanged() -> void
 {
     // A revision alone is handled by the preview rebuild in Tick; only a palette flip re-bakes the controls.
-    const auto IsLight = CkStyle::IsLight();
+    const auto IsLight = CkStyle::IsThemeLight();
 
     if (IsLight == _LastSeenLight)
     { return; }

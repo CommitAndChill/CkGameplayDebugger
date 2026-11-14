@@ -47,28 +47,30 @@ namespace ck_debug_palette_follow
         return true;
     }
 
+    auto Get_PendingFlip() -> bool&
+    {
+        static auto PendingFlip = false;
+        return PendingFlip;
+    }
+
     auto OnTick(
         float InDeltaTime) -> bool
     {
-        const auto IsLight = CkStyle::IsLight();
-        auto& Followed = Get_Followed();
-        auto AnyCopied = false;
+        ck::debug_style::Sync_Palette();
 
-        for (auto& Entry : Followed)
-        {
-            const auto Live = Entry.Live.Pin();
-            if (NOT Live.IsValid() || Entry.IsLight == IsLight)
-            { continue; }
-
-            Entry.IsLight = IsLight;
-            ck::debug_style::Request_CopyStyleInPlace(*Live, *Entry.Factory());
-            AnyCopied = true;
-        }
-
-        if (NOT AnyCopied || NOT FSlateApplication::IsInitialized())
+        if (NOT Get_PendingFlip() || NOT FSlateApplication::IsInitialized())
         { return true; }
 
+        Get_PendingFlip() = false;
         FSlateApplication::Get().InvalidateAllWidgets(false);
+
+        // A test run forces Dark and hands the palette back when it ends; neither flip is the user's.
+        static auto FlippedForAutomation = false;
+        if (GIsAutomationTesting || FlippedForAutomation)
+        {
+            FlippedForAutomation = GIsAutomationTesting;
+            return true;
+        }
 
         if (GIsEditor)
         {
@@ -92,10 +94,32 @@ auto
 {
     using namespace ck_debug_palette_follow;
 
-    Get_Followed().Add(FFollowed{InLiveStyle, MoveTemp(InFactory), CkStyle::IsLight()});
+    Get_Followed().Add(FFollowed{InLiveStyle, MoveTemp(InFactory), CkStyle::IsThemeLight()});
 
     if (NOT Get_TickerHandle().IsValid())
     { Get_TickerHandle() = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateStatic(&OnTick)); }
+}
+
+auto
+    ck::debug_style::
+    Sync_Palette()
+    -> void
+{
+    using namespace ck_debug_palette_follow;
+
+    const auto IsLight = CkStyle::IsThemeLight();
+    const auto Palette = CkStyle::FScopedPalette{IsLight ? ECk_Style_Palette::Light : ECk_Style_Palette::Dark};
+
+    for (auto& Entry : Get_Followed())
+    {
+        const auto Live = Entry.Live.Pin();
+        if (NOT Live.IsValid() || Entry.IsLight == IsLight)
+        { continue; }
+
+        Entry.IsLight = IsLight;
+        Request_CopyStyleInPlace(*Live, *Entry.Factory());
+        Get_PendingFlip() = true;
+    }
 }
 
 auto
