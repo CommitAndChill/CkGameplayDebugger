@@ -6,6 +6,8 @@
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 // ====================================================================================================================
 
 SCkDebugger_WindowBase::~SCkDebugger_WindowBase()
@@ -45,6 +47,8 @@ auto SCkDebugger_WindowBase::Register_WithGate() -> void
 	// Seed the baseline so the first gated poll can only report a change the user actually made.
 	if (const auto* Settings = UCkDebuggerStyleSettings::Get())
 	{ _LastSeenStyleRevision = Settings->Get_Revision(); }
+
+	_LastSeenLight = CkStyle::IsLight();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -77,11 +81,13 @@ auto SCkDebugger_WindowBase::Poll_StyleRevision() -> void
 	{ return; }
 
 	const auto Revision = Settings->Get_Revision();
+	const auto IsLight = CkStyle::IsLight();
 
-	if (Revision == _LastSeenStyleRevision)
+	if (Revision == _LastSeenStyleRevision && IsLight == _LastSeenLight)
 	{ return; }
 
 	_LastSeenStyleRevision = Revision;
+	_LastSeenLight = IsLight;
 
 	OnStyleRevisionChanged();
 }
