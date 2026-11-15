@@ -220,6 +220,7 @@ auto SCkDebuggerSelectionGizmo::OnPaint(
     const FWidgetStyle&,
     bool) const -> int32
 {
+    const auto ScenePalette = CkStyle::FScopedPalette{ECk_Style_Palette::Dark};
     auto Layer = InLayerId;
     const auto Resource = FSlateApplication::Get().GetRenderer()->GetResourceHandle(*CkStyle::GetFilledBrush());
     const auto RenderTransform = InAllottedGeometry.GetAccumulatedRenderTransform();
