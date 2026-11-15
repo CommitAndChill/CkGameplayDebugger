@@ -26,6 +26,18 @@ provides:
   string key or an SVG basename. `CkDebuggerCommon` owns this set's
   `Initialize`/`Shutdown`; a feature module must never call either. Adopt it
   instead of registering a module-local `FSlateStyleSet`.
+- **Light/Dark palette following** (`Styles/CkDebuggerPaletteFollow.h`) — a style
+  set built from `CkStyle::` colours bakes the palette at registration. Register it
+  with `ck::debug_style::Follow_Palette(Live, Factory)` (and `Unfollow_Palette` before
+  unregistering): when `CkStyle::IsLight()` flips with the editor theme, the factory's
+  fresh set is copied into the live set's existing procedural brushes and widget
+  styles, so pointers widgets already hold stay valid. Windows rebuild on the same
+  flip through `OnStyleRevisionChanged`, after `Sync_Palette()` (a text block copies
+  its style at construction, so the sets must be current first); a window without an
+  override picks the new palette up when reopened (a one-shot editor notification says so).
+  Flip detection reads `CkStyle::IsThemeLight()`, which ignores an active `FScopedPalette`.
+  Widgets that outlive a window's rebuild (the window chrome, refresh controls) bind colours
+  with `_Lambda`, never by value.
 - **Shared Slate widgets** (`Widgets/`) — composable building blocks for rows,
   pills, headers, status indicators, copy / selectable text.
 - **Search bars** (`Search/`) — `SCkDebug_DualSearchBar` (side-by-side Filter +
