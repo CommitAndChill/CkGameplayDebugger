@@ -6,6 +6,7 @@
 
 #include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Macros/CkMacros.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include <Editor.h>
 #include <Engine/World.h>
@@ -127,6 +128,8 @@ auto
     {
         return;
     }
+
+    const auto ScenePalette = CkStyle::FScopedPalette{ECk_Style_Palette::Dark};
 
     // Debug drawing is globally suppressible, and a performance overlay is exactly the kind of thing a streamer
     // does not want on screen.

@@ -42,7 +42,7 @@ auto SCkDebug_WorldSelector::Construct(
         [
             SNew(SBorder)
             .BorderImage(CkStyle::GetRoundedBrush())
-            .BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
+            .BorderBackgroundColor_Lambda([] { return FSlateColor(CkStyle::Bg2()); })
             .Padding(FMargin(CkStyle::SpaceS))
             [
                 SNew(SVerticalBox)
@@ -54,7 +54,7 @@ auto SCkDebug_WorldSelector::Construct(
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("World Selection")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()))
-                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                    .ColorAndOpacity_Lambda([] { return FSlateColor(CkStyle::TextDim()); })
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                 ]
 
