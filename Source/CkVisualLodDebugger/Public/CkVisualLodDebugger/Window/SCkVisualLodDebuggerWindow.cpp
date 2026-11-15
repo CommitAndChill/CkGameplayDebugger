@@ -4394,6 +4394,8 @@ auto
 {
     using namespace ck_visuallod_debugger_window;
 
+    const auto ScenePalette = CkStyle::FScopedPalette{ECk_Style_Palette::Dark};
+
     if (NOT _MarkersEnabled)
     {
         _MarkerSet.Reset();

@@ -724,6 +724,8 @@ auto FCkInspector_Camera::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
     if (ck::Is_NOT_Valid(EntityWorld))
     { return; }
 
+    const auto ScenePalette = CkStyle::FScopedPalette{ECk_Style_Palette::Dark};
+
     const auto& Current = Entity.Get<ck::FFragment_Camera>();
     const auto& Pov     = Entity.Get<ck::FFragment_Camera_Pov>().Get_PovState();
 
