@@ -5,10 +5,8 @@
 class FSlateStyleSet;
 
 // ====================================================================================================================
-// A registered style set bakes the CkStyle palette into its brushes and widget styles when it is created. Following
-// rebuilds a fresh set from the same factory when the palette flips between Light and Dark, and copies it INTO the
-// live set's existing objects, so pointers widgets already hold stay valid. Procedural brushes only: an image brush
-// keeps its resource, so whatever patched it in place keeps its patch.
+// On a palette flip a fresh set is built and copied INTO the live set's objects, so pointers widgets hold stay valid.
+// Procedural brushes only: an image brush keeps its resource, so an in-place patch survives.
 // ====================================================================================================================
 
 namespace ck::debug_style
