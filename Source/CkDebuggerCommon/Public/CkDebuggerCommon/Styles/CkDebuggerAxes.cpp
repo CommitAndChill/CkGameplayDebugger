@@ -98,6 +98,12 @@ namespace ck_debugger_axes
         return FSlateColor{FLinearColor::Transparent};
     }
 
+    // A Solid badge fills with its slot colour, which the Light palette tunes as a dark text ink.
+    auto Get_SolidBadgeInk() -> FLinearColor
+    {
+        return CkStyle::IsLight() ? FLinearColor::White : CkStyle::TextStrong();
+    }
+
     // ----- CornerStyle brushes ------------------------------------------------
     // The ring counterpart of the corner shape, for the options that draw an outline instead of a
     // fill. Kept internal: the public selectors below are what call sites compose through.
@@ -241,12 +247,12 @@ namespace ck_debugger_axes
     {
         switch (Get_LiveSelection().BadgeStyle)
         {
-            case ECkDebugAxis_BadgeStyle::Solid:     return FSlateColor{CkStyle::TextStrong()};
+            case ECkDebugAxis_BadgeStyle::Solid:     return FSlateColor{Get_SolidBadgeInk()};
             case ECkDebugAxis_BadgeStyle::Hollow:    return FSlateColor{InInk};
             case ECkDebugAxis_BadgeStyle::CountOnly: return FSlateColor{InInk};
         }
 
-        return FSlateColor{CkStyle::TextStrong()};
+        return FSlateColor{Get_SolidBadgeInk()};
     }
 
     // ----- FoldChipStyle resolvers --------------------------------------------
