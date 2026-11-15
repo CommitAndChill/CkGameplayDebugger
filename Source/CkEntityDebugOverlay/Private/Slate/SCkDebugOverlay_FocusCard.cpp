@@ -114,7 +114,7 @@ namespace ck_debugoverlay_focuscard
                 return SNew(STextBlock)
                     .Text(InText)
                     .Font(ck::debug_axes::ScaledFont("Bold", InFontSize))
-                    .ColorAndOpacity(InProviderColor);
+                    .ColorAndOpacity(CkStyle::InkOf(InProviderColor));
         }
 
         return Make_Pill(InProviderColor, ChipInk);
@@ -515,7 +515,7 @@ auto
 
         // Field chips share a provider-derived key color; the chip's own fill is the
         // ChipStyle axis' business (Make_FieldChip below).
-        const auto FieldKeyColor = CkStyle::OverlayOf(ProviderColor, 0.95f);
+        const auto FieldKeyColor = CkStyle::InkOf(CkStyle::OverlayOf(ProviderColor, 0.95f));
 
         for (const auto& Row : Section.Rows)
         {
