@@ -15,7 +15,7 @@
 #include "CkEcs/ContextOwner/CkContextOwner_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
-#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 #include "CkEcsExt/Transform/CkTransform_Fragment.h"
 #include "CkLabel/CkLabel_Utils.h"
 #include "CkPmg/CkPmg_Fragment.h"
@@ -165,7 +165,7 @@ auto UCk_DebugOverlay_Subsystem::Update_Selection(UWorld* InWorld,
                 if (auto* PC = InWorld->GetFirstPlayerController(); ck::IsValid(PC))
                 { Params.AddIgnoredActor(PC->GetPawn().Get()); }
                 // An entity's own actor is the target, not an occluder.
-                if (auto* Actor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor_Recursive(InHandle); ck::IsValid(Actor))
+                if (auto* Actor = UCk_Utils_EntityBridge_UE::TryGet_Actor_Recursive(InHandle); ck::IsValid(Actor))
                 { Params.AddIgnoredActor(Actor); }
                 Node.Occluded = InWorld->LineTraceTestByChannel(InViewpoint.Location, Node.Position,
                     ECC_Visibility, Params);

@@ -9,7 +9,7 @@ reasoning.
 
 An owner entity the depth/nesting logic looks THROUGH. v1 has exactly one built-in rule:
 an entity whose owning actor is `ACk_ActorRelay_UE` (the exact check
-`CkInspector_ActorRelay.cpp` already uses: `TryGet_EntityOwningActor` + `Cast`). No
+`CkInspector_ActorRelay.cpp` already uses: `TryGet_Actor` + `Cast`). No
 per-project rule list yet — a bool gate suffices until a second transparent type exists.
 
 ## Shared predicate (CkDebuggerCommon — the ONE authority both surfaces call)

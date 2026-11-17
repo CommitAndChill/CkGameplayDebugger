@@ -3,7 +3,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
-#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -172,7 +172,7 @@ auto
     if (ck::Is_NOT_Valid(LocalPawn))
     { return false; }
 
-    auto* OwningActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor_Recursive(InEntity);
+    auto* OwningActor = UCk_Utils_EntityBridge_UE::TryGet_Actor_Recursive(InEntity);
     if (ck::Is_NOT_Valid(OwningActor))
     { return false; }
 

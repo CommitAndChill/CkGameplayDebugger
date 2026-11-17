@@ -3,7 +3,7 @@
 #include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Validation/CkIsValid.h"
 
-#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
@@ -740,7 +740,7 @@ auto
         if (CurrentActor->GetWorld() != InWorld)
         { break; }
 
-        const auto Handle = UCk_Utils_OwningActor_UE::TryGet_ActorEntityHandle(CurrentActor);
+        const auto Handle = UCk_Utils_EntityBridge_UE::TryGet_Entity(CurrentActor);
         if (ck::IsValid(Handle))
         { return Handle; }
 
@@ -977,7 +977,7 @@ auto
     if (UCk_Utils_IskmProxy_UE::Has(InEntity))
     { return true; }
 
-    return ck::IsValid(UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(InEntity));
+    return ck::IsValid(UCk_Utils_EntityBridge_UE::TryGet_Actor(InEntity));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1268,7 +1268,7 @@ auto
     if (ck::Is_NOT_Valid(InEntity))
     { return false; }
 
-    auto* OwningActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor_Recursive(InEntity);
+    auto* OwningActor = UCk_Utils_EntityBridge_UE::TryGet_Actor_Recursive(InEntity);
     if (ck::Is_NOT_Valid(OwningActor))
     { return false; }
 

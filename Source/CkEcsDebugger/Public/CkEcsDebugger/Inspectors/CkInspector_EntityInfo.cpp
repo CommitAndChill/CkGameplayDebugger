@@ -2,7 +2,7 @@
 
 #include "CkCore/Enums/CkEnums.h"
 #include "CkCore/Validation/CkIsValid.h"
-#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
@@ -32,14 +32,14 @@ namespace ck_inspector_entity_info
 
     auto Build_ActorText(const FCk_Handle& InEntity) -> FString
     {
-        if (ck::IsValid(InEntity) && UCk_Utils_OwningActor_UE::Has(InEntity))
-        { return ck::Format_UE(TEXT("{}"), UCk_Utils_OwningActor_UE::Get_EntityOwningActor(InEntity)); }
+        if (ck::IsValid(InEntity) && UCk_Utils_EntityBridge_UE::Has(InEntity))
+        { return ck::Format_UE(TEXT("{}"), UCk_Utils_EntityBridge_UE::Get_Actor(InEntity)); }
         return TEXT("None");
     }
 
     auto Build_ActorColor(const FCk_Handle& InEntity) -> FLinearColor
     {
-        return ck::IsValid(InEntity) && UCk_Utils_OwningActor_UE::Has(InEntity) ? CkStyle::Text() : CkStyle::None();
+        return ck::IsValid(InEntity) && UCk_Utils_EntityBridge_UE::Has(InEntity) ? CkStyle::Text() : CkStyle::None();
     }
 
     auto Describe_Entity(const FCk_Handle& InEntity) -> FString

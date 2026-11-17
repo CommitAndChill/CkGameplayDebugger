@@ -7,7 +7,7 @@
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 #include "CkEcs/Handle/CkHandle.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
-#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
@@ -161,7 +161,7 @@ auto
 	if (ViewPC != nullptr)
 	{
 		if (auto* Pawn = ViewPC->GetPawn().Get(); IsValid(Pawn))
-		{ _PlayerPawnEntity = UCk_Utils_OwningActor_UE::TryGet_ActorEntityHandle(Pawn); }
+		{ _PlayerPawnEntity = UCk_Utils_EntityBridge_UE::TryGet_Entity(Pawn); }
 	}
 
 	// Sample navmesh state once per tick.

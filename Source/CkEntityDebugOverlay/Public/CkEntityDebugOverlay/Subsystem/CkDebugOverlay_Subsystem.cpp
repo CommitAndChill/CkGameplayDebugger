@@ -34,7 +34,7 @@
 #endif
 
 // Locally-possessed-pawn marker suppression (owning-actor chain lookup).
-#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 
 // Double-tap EcsDebuggerFocusKey → open the focused entity in the CK ECS Debugger.
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"

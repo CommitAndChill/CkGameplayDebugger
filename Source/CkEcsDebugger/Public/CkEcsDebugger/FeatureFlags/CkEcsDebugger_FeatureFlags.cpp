@@ -17,7 +17,7 @@
 #include "CkCamera/CameraShake/CkCameraShake_Fragment.h"
 #include "CkChaos/GeometryCollection/CkGeometryCollection_Fragment.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
-#include "CkEcs/OwningActor/CkOwningActor_Fragment.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Fragment.h"
 #include "CkEcsExt/SceneNode/CkSceneNode_Fragment.h"
 #include "CkEcsExt/Transform/CkTransform_Fragment.h"
 #include "CkEntityCollection/CkEntityCollection_Fragment.h"
@@ -105,7 +105,7 @@ auto
     debug_feature_flags::RegisterFlag<FFragment_EqsQuery_State>(TEXT("Eqs"));
     debug_feature_flags::RegisterFlag<FFragment_IsmProxy>(TEXT("IsmProxy"));
     debug_feature_flags::RegisterFlag<FFragment_IskmProxy>(TEXT("IskmProxy"));
-    debug_feature_flags::RegisterFlag<FFragment_OwningActor>(TEXT("ActorBridge"));
+    debug_feature_flags::RegisterFlag<FFragment_EntityBridge>(TEXT("ActorBridge"));
     debug_feature_flags::RegisterFlag<FFragment_Tween>(TEXT("Tween"));
     debug_feature_flags::RegisterFlag<FFragment_EntityCollection_Params>(TEXT("EntityCollection"));
 

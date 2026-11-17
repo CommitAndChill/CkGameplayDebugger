@@ -4,7 +4,7 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
-#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
 
@@ -54,7 +54,7 @@ namespace ck_debug_focus
 
         // 2) Direct owning actor's bounds (NOT recursive — focusing a feature
         //    sub-entity must not frame its whole owner complex).
-        if (auto* DirectActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(InEntity);
+        if (auto* DirectActor = UCk_Utils_EntityBridge_UE::TryGet_Actor(InEntity);
             ck::IsValid(DirectActor))
         {
             auto Origin = FVector::ZeroVector;
@@ -73,7 +73,7 @@ namespace ck_debug_focus
         }
 
         // 4) No transform at all — fall back to whichever ancestor carries the actor.
-        if (auto* ChainActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor_Recursive(InEntity);
+        if (auto* ChainActor = UCk_Utils_EntityBridge_UE::TryGet_Actor_Recursive(InEntity);
             ck::IsValid(ChainActor))
         {
             auto Origin = FVector::ZeroVector;

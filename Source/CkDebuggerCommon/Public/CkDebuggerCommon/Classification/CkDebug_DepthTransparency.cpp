@@ -2,7 +2,7 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
-#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 
 #include "CkActorRelay/CkActorRelay_Actor.h"
 
@@ -31,7 +31,7 @@ namespace ck::DebugDepthTransparency
         { return false; }
 
         // Same check CkInspector_ActorRelay uses to decide it can inspect an entity.
-        auto* OwningActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(InEntity);
+        auto* OwningActor = UCk_Utils_EntityBridge_UE::TryGet_Actor(InEntity);
         return Cast<ACk_ActorRelay_UE>(OwningActor) != nullptr;
     }
 }

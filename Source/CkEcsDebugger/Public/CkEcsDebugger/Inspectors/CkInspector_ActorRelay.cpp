@@ -4,7 +4,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
-#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 #include "CkActorRelay/CkActorRelay_Actor.h"
 #include "CkActorRelay/CkActorRelay_GroupSubsystem.h"
 
@@ -41,7 +41,7 @@ namespace ck_inspector_actor_relay
         if (IsDestroying(InEntity))
         { return nullptr; }
 
-        auto* const OwningActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(InEntity);
+        auto* const OwningActor = UCk_Utils_EntityBridge_UE::TryGet_Actor(InEntity);
         return ck::IsValid(OwningActor) ? Cast<ACk_ActorRelay_UE>(OwningActor) : nullptr;
     }
 
