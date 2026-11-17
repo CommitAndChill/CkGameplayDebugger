@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 
+#include "CkEcs/EntityBridge/CkEntityBridge_Fragment.h"
 #include "CkEcs/DebugFeatureFlags/CkDebugFeatureFlags.h"
 #include "CkEcs/EntityBridge/CkEntityBridge_Utils.h"
 #include "CkEcs/Registry/CkRegistry.h"
@@ -223,7 +224,7 @@ bool FCkEcsDebuggerClassification_RelayPredicate_Test::RunTest(const FString&)
 
     {
         auto RelayHandle = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
-        UCk_Utils_EntityBridge_UE::Add(RelayHandle, GetMutableDefault<ACk_ActorRelay_UE>());
+        RelayHandle.Add<ck::FFragment_EntityBridge>(GetMutableDefault<ACk_ActorRelay_UE>(), nullptr);
 
         auto PlainHandle = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
 
