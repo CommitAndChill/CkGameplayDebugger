@@ -31,13 +31,6 @@
       "reason": "FLAKY: green alone (renderer pass). 'Repeated authored dependency mounts a real button'. One of six routed-click UI tests that all failed together in G4's renderer pass (only 2 lanes on a loaded machine; 16 renderer-pass failures vs 10-13 in G1-G3) and all passed in G1-G3 - likely one shared environmental cause. Drop the entry if it never recurs.",
       "evidence": "CkPlugins at the cleaned Ck dev tips (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba), UnrealToolbox v1.52, judged full gates G1-G4 on one build 2026-10-02 (3972 run; 30/29/28/35 red) + a solo fresh-boot run: gates PPPF, solo GREEN",
       "added": "2026-10-02"
-    },
-    {
-      "test": "Ck.UiAuthoring.StyleLab.Window",
-      "status": "red",
-      "reason": "Renderer pass: Routed All Tones click does not update the production sample or its checkbox (CkStyleLab_WindowAuthored.spec.cpp:208/210). Oscillates alone (green once, red on the G2 re-run); listed red on purpose so a pass only prints 'Now passing'.",
-      "evidence": "CkPlugins at the cleaned Ck dev tips (CkFoundation 3a52cf6bc, CkTests cfabadb0, CkGameplayDebugger 4ffcc3ba), UnrealToolbox v1.52, judged full gates G1+G2 on one build 2026-10-02 (3972 run; 30 / 29 red): gates FF, solo GREEN then RED",
-      "added": "2026-10-02"
     }
   ]
 }
