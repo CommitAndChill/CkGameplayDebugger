@@ -24,7 +24,7 @@ class UToolMenu;
 // 3) Inside a UEdGraphSchema::GetContextMenuActions override (UToolMenu):
 //      ck::DebugCopyMenu::AddCopyEntryToToolMenu(InMenu, "CopyText", LabelText, Tooltip, NodeTitleStr);
 //
-// All variants copy via FPlatformApplicationMisc::ClipboardCopy and use the standard
+// All variants copy via ck::clipboard::Copy and use the standard
 // "GenericCommands.Copy" icon.
 // --------------------------------------------------------------------------------------------------------------------
 

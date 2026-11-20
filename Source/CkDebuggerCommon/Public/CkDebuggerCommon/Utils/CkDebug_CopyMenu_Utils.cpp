@@ -4,7 +4,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "HAL/PlatformApplicationMisc.h"
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "InputCoreTypes.h"
 #include "Styling/AppStyle.h"
 #include "Textures/SlateIcon.h"
@@ -29,7 +29,7 @@ namespace ck::DebugCopyMenu
         {
             return FUIAction(FExecuteAction::CreateLambda([Text = MoveTemp(InTextToCopy)]()
             {
-                FPlatformApplicationMisc::ClipboardCopy(*Text);
+                ck::clipboard::Copy(Text);
             }));
         }
     }

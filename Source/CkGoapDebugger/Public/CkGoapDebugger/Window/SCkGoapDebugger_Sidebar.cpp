@@ -21,7 +21,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "HAL/PlatformApplicationMisc.h"
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
@@ -275,7 +275,7 @@ auto
                                             .ContentPadding(FMargin(6.0f, 1.0f))
                                             .OnClicked_Lambda([this]()
                                             {
-                                                FPlatformApplicationMisc::ClipboardCopy(*BuildCopyText(_HistoryItems));
+                                                ck::clipboard::Copy(BuildCopyText(_HistoryItems));
                                                 return FReply::Handled();
                                             })
                                             [

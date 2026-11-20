@@ -30,7 +30,7 @@
 #include <Layout/WidgetPath.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
 #include <HAL/FileManager.h>
-#include <HAL/PlatformApplicationMisc.h>
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include <HAL/PlatformProcess.h>
 #include <HAL/PlatformTime.h>
 #include <IImageWrapperModule.h>
@@ -2958,7 +2958,7 @@ auto
         return FReply::Handled();
     }
 
-    FPlatformApplicationMisc::ClipboardCopy(*_CurrentReport);
+    ck::clipboard::Copy(_CurrentReport);
     DoSetStatus(TEXT("Report copied to clipboard."), ECk_Tone::Ok);
 
     return FReply::Handled();
