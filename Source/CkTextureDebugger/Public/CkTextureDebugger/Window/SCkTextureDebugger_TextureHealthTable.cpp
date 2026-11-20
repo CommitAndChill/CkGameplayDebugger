@@ -20,7 +20,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "Engine/Texture.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "HAL/PlatformApplicationMisc.h"
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "Styling/StyleDefaults.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
@@ -767,7 +767,7 @@ auto SCkTextureDebugger_TextureHealthTable::On_CopyTextureDetails(const FString&
     const TWeakPtr<FRow>* Found = _UiRows.Find(InKey);
     const TSharedPtr<FRow> Row = Found != nullptr ? Found->Pin() : nullptr;
     if (!Row.IsValid() || Find_Row(Row->Key) != Row) { return; }
-    FPlatformApplicationMisc::ClipboardCopy(*Make_Details(*Row));
+    ck::clipboard::Copy(Make_Details(*Row));
 }
 
 auto SCkTextureDebugger_TextureHealthTable::On_AuthoredSelectionChanged(TOptional<FString> InKey, ESelectInfo::Type InSelectInfo) -> void

@@ -20,7 +20,7 @@
 #include "CkSlateLayout/SCkUiSurface.h"
 
 #include "Interfaces/IPluginManager.h"
-#include "HAL/PlatformApplicationMisc.h"
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "Misc/Paths.h"
 
 // ====================================================================================================================
@@ -693,7 +693,7 @@ auto SCkAStarDebugger_StatsPanel::CopyAuthoredStats() -> void
         *Text(TEXT("astar-stats-time")), *Text(TEXT("astar-stats-threshold")), *Text(TEXT("astar-stats-cell-title")),
         *Text(TEXT("astar-stats-cell-state")), *Text(TEXT("astar-stats-cell-g")), *Text(TEXT("astar-stats-cell-f")),
         *Text(TEXT("astar-stats-cell-parent")));
-    FPlatformApplicationMisc::ClipboardCopy(*Payload);
+    ck::clipboard::Copy(Payload);
 }
 
 // ====================================================================================================================

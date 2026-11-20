@@ -12,7 +12,7 @@ public class CkDebuggerCommon : CkModuleRules
             "Engine",
             "DeveloperSettings",
 
-            "ApplicationCore",  // FPlatformApplicationMisc::ClipboardCopy in CkDebug_CopyMenu_Utils
+            "ApplicationCore",
             "InputCore",     // EKeys symbols referenced by templated SListView/SComboBox instantiations
             "Projects",      // IPluginManager — FCkDebuggerCommonStyle resolves the Resources content root
             "Slate",

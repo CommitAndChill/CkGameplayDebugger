@@ -10,6 +10,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 
 #include "HAL/PlatformApplicationMisc.h"
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "HAL/IConsoleManager.h"
 #include "InputCoreTypes.h"
 #include "Framework/Application/SlateApplication.h"
@@ -429,7 +430,7 @@ auto SCkDebugOverlay_SelectionPanel::Build_NamedPresetSection() -> TSharedRef<SW
                 const auto Name = _PresetNameText.IsValid() ? FName{_PresetNameText->GetText().ToString()} : NAME_None;
                 const auto* Settings = UCk_DebugOverlay_SelectionSettings::Get();
                 if (Settings != nullptr && Settings->Export_NamedPresetJson(Name, Json))
-                { FPlatformApplicationMisc::ClipboardCopy(*Json); _PanelError.Reset(); }
+                { ck::clipboard::Copy(Json); _PanelError.Reset(); }
                 else { _PanelError = TEXT("Save a named preset before exporting it."); }
             }) ]
         + SHorizontalBox::Slot().AutoWidth()

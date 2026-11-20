@@ -15,7 +15,7 @@
 #include "CkSlateLayout/CkUiCollection.h"
 #include "CkSlateLayout/SCkUiSurface.h"
 
-#include "HAL/PlatformApplicationMisc.h"
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
 #include "Styling/CoreStyle.h"
@@ -317,7 +317,7 @@ auto
     const auto* Copy = Record.IsValid() ? Record->FindField(TEXT("copy")) : nullptr;
     if (Copy == nullptr || Copy->Kind != ECkUiFieldKind::Text)
     { return; }
-    FPlatformApplicationMisc::ClipboardCopy(*Copy->Text.ToString());
+    ck::clipboard::Copy(Copy->Text.ToString());
 }
 
 // ====================================================================================================================

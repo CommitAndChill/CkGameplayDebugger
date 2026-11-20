@@ -7,7 +7,7 @@
 #include "CkSlateLayout/SCkUiTable.h"
 
 #include "Components/PrimitiveComponent.h"
-#include "HAL/PlatformApplicationMisc.h"
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
@@ -552,14 +552,14 @@ auto SCkTextureDebugger_SceneAuditTable::On_CopyComponentPath(const FString& InK
 {
     if (const TSharedPtr<FRow> Row = Find_RowByUiKey(InKey); Row.IsValid())
     {
-        FPlatformApplicationMisc::ClipboardCopy(*Row->Key.ComponentPath);
+        ck::clipboard::Copy(Row->Key.ComponentPath);
     }
 }
 auto SCkTextureDebugger_SceneAuditTable::On_CopyAuditSummary(const FString& InKey) -> void
 {
     if (const TSharedPtr<FRow> Row = Find_RowByUiKey(InKey); Row.IsValid())
     {
-        FPlatformApplicationMisc::ClipboardCopy(*MakeCopyText(*Row));
+        ck::clipboard::Copy(MakeCopyText(*Row));
     }
 }
 

@@ -53,7 +53,7 @@
 #include <Framework/Application/IMenu.h>
 #include <Styling/SlateBrush.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
-#include <HAL/PlatformApplicationMisc.h>
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include <Misc/FileHelper.h>
 #include <Misc/PackageName.h>
 #include <Misc/Paths.h>
@@ -1771,7 +1771,7 @@ auto
     -> FReply
 {
     const auto Report = ck_save_debugger_model::Build_TextReport(_Model);
-    FPlatformApplicationMisc::ClipboardCopy(*Report);
+    ck::clipboard::Copy(Report);
 
     DoSet_Status(TEXT("Report copied to clipboard."), ECk_Tone::Ok);
     return FReply::Handled();
@@ -2193,7 +2193,7 @@ auto
     }
 
     const auto Report = ck_save_debugger_model::Build_DiffReportText(_Model);
-    FPlatformApplicationMisc::ClipboardCopy(*Report);
+    ck::clipboard::Copy(Report);
 
     DoSet_Status(TEXT("Diff report copied to clipboard."), ECk_Tone::Ok);
     return FReply::Handled();
@@ -2233,7 +2233,7 @@ auto
         return FReply::Handled();
     }
 
-    FPlatformApplicationMisc::ClipboardCopy(*Payload->Get_Entry().Get_TypePath());
+    ck::clipboard::Copy(Payload->Get_Entry().Get_TypePath());
     DoSet_Status(TEXT("Type path copied to clipboard."), ECk_Tone::Ok);
     return FReply::Handled();
 }
@@ -2252,7 +2252,7 @@ auto
         return FReply::Handled();
     }
 
-    FPlatformApplicationMisc::ClipboardCopy(*Metadata);
+    ck::clipboard::Copy(Metadata);
     DoSet_Status(TEXT("Blob metadata copied to clipboard."), ECk_Tone::Ok);
     return FReply::Handled();
 }
@@ -2862,7 +2862,7 @@ auto SCkSaveDebuggerWindow::DoOnCopyEntityIdentity(const FString& InKey) -> void
 {
     const TSharedPtr<FCkSaveDebugger_TreeNode> Node = TryGet_EntityNodeForUiKey(InKey);
     if (!Node.IsValid()) { return; }
-    _LastEntityContextActionKey = InKey; ++_EntityContextActionCount; FPlatformApplicationMisc::ClipboardCopy(*Node->DisplayText);
+    _LastEntityContextActionKey = InKey; ++_EntityContextActionCount; ck::clipboard::Copy(Node->DisplayText);
 }
 
 auto SCkSaveDebuggerWindow::DoOnCopyEntitySavedId(const FString& InKey) -> void
@@ -2870,7 +2870,7 @@ auto SCkSaveDebuggerWindow::DoOnCopyEntitySavedId(const FString& InKey) -> void
     const TSharedPtr<FCkSaveDebugger_TreeNode> Node = TryGet_EntityNodeForUiKey(InKey);
     if (!Node.IsValid()) { return; }
     _LastEntityContextActionKey = InKey; ++_EntityContextActionCount;
-    FPlatformApplicationMisc::ClipboardCopy(*ck_save_debugger_model::Build_SavedIdText(Node->SavedId));
+    ck::clipboard::Copy(ck_save_debugger_model::Build_SavedIdText(Node->SavedId));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
