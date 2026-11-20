@@ -19,11 +19,14 @@ private:
     // Registers the grid-spawner component visualizer with GUnrealEd. Deferred to OnPostEngineInit
     // because this module loads at the "Default" phase, before GUnrealEd exists.
     auto RegisterSpawnerVisualizer() -> void;
+    auto OnActorSelectionChanged(UObject* InSelection) -> void;
 
 private:
     TSharedPtr<FComponentVisualizer> _SpawnerVisualizer;
     FName                            _SpawnerVisualizerName;
     FDelegateHandle                  _PostEngineInitHandle;
+    FDelegateHandle                  _SelectionChangedHandle;
+    bool                             _SwitchingPaintMode = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

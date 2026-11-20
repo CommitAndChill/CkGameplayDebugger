@@ -2,6 +2,9 @@
 
 #include "CkGridEditor/Draw/Ck2dGridSystem_AuthoredOverlay.h"
 #include "CkGridEditor/EdMode/Ck2dGridSystem_EdMode.h"
+#include "CkGridEditor/EdMode/CkHexGrid_EdMode.h"
+#include "CkGridEditor/EdMode/CkHexGrid_PaintService.h"
+#include "CkGridEditor/Draw/CkHexGrid_AuthoredOverlay.h"
 
 #include "CkEntitySpawner/CkEntitySpawner_Actor.h"
 
@@ -56,7 +59,13 @@ void
     const ACk_EntitySpawner_UE* Spawner = nullptr;
     const auto* Spec = ck_grid_spawner_visualizer::Resolve_DrawableSpec(Component, Spawner);
     if (Spec == nullptr)
-    { return; }
+    {
+        const auto Hex = ck::hex_grid_editor::ResolveDrawableSelection(Cast<USceneComponent>(Component),
+            GLevelEditorModeTools().IsModeActive(UCk_HexGrid_EdMode::EM_CkHexGridPaintModeId));
+        if (Hex.IsValid())
+        { ck::hex_grid_editor::DrawAuthoredOverlay(PDI, Hex.Spec, Hex.PivotWorld); }
+        return;
+    }
 
     ck::grid_editor::Draw_GridAuthoredOverlay(PDI, Spec, Spawner->GetActorTransform());
 }
@@ -72,7 +81,13 @@ void
     const ACk_EntitySpawner_UE* Spawner = nullptr;
     const auto* Spec = ck_grid_spawner_visualizer::Resolve_DrawableSpec(Component, Spawner);
     if (Spec == nullptr)
-    { return; }
+    {
+        const auto Hex = ck::hex_grid_editor::ResolveDrawableSelection(Cast<USceneComponent>(Component),
+            GLevelEditorModeTools().IsModeActive(UCk_HexGrid_EdMode::EM_CkHexGridPaintModeId));
+        if (Hex.IsValid())
+        { ck::hex_grid_editor::DrawAuthoredLabels(Canvas, View, Hex.Spec, Hex.PivotWorld); }
+        return;
+    }
 
     ck::grid_editor::Draw_GridTagLabels(Canvas, View, Spec, Spawner->GetActorTransform());
 }
