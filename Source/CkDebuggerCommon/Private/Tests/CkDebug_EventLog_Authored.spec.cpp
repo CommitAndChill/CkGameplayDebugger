@@ -1,11 +1,11 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventLog.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkSlateLayout/SCkUiSurface.h"
 #include "CkSlateLayout/CkFlexText.h"
 
 #include "Framework/Application/SlateApplication.h"
-#include "HAL/PlatformApplicationMisc.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -137,13 +137,11 @@ auto FCkDebugEventLog_AuthoredPresentation::RunTest(const FString&) -> bool
     auto* StyleSettings = UCkDebuggerStyleSettings::Get_Mutable();
     if (NOT TestNotNull(TEXT("debugger style settings are available"), StyleSettings)) { return false; }
     const auto SavedSelection = StyleSettings->Selection;
-    auto OriginalClipboard = FString{};
-    FPlatformApplicationMisc::ClipboardPaste(OriginalClipboard);
+    FCk_ClipboardCapture_Scope Clipboard;
     TSharedPtr<SWindow> Window;
     ON_SCOPE_EXIT
     {
         Slate.DismissAllMenus();
-        FPlatformApplicationMisc::ClipboardCopy(*OriginalClipboard);
         StyleSettings->Selection = SavedSelection;
         StyleSettings->NotifyChanged();
         if (Window.IsValid()) { Slate.DestroyWindowImmediately(Window.ToSharedRef()); }
@@ -207,10 +205,10 @@ auto FCkDebugEventLog_AuthoredPresentation::RunTest(const FString&) -> bool
     for (const auto& Popup : PopupWindows)
     { if (const auto Found = FindMenuEntry(Popup, TEXT("Copy Events"))) { Copy = Found; break; } }
     if (NOT TestTrue(TEXT("native copy command is present in the child-window menu"), Copy.IsValid())) { return false; }
+    const auto CopiesBefore = Clipboard.Get_CopyCount();
     if (NOT TestTrue(TEXT("native copy command is physically reachable"), Click(Slate, Copy.ToSharedRef()))) { return false; }
-    auto Copied = FString{};
-    FPlatformApplicationMisc::ClipboardPaste(Copied);
-    TestTrue(TEXT("copy preserves timestamps, categories and selected messages"), Copied.Contains(TEXT("[01:01.125] STATE  first"))
+    const auto& Copied = Clipboard.Get_Text();
+    TestTrue(TEXT("copy preserves timestamps, categories and selected messages"), Clipboard.Get_CopyCount() == CopiesBefore + 1 && Copied.Contains(TEXT("[01:01.125] STATE  first"))
         && Copied.Contains(TEXT("[01:01.125] STATE  second")) && NOT Copied.Contains(TEXT("third")));
     Slate.DismissAllMenus();
 

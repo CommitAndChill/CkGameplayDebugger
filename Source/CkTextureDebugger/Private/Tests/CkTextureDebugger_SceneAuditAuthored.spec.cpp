@@ -1,6 +1,7 @@
 #include "CkSlateLayout/CkFlexText.h"
 #include "CkTextureDebugger/Window/SCkTextureDebugger_SceneAuditTable.h"
 
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkSlateLayout/CkUiCollection.h"
 #include "CkSlateLayout/SCkUiTable.h"
@@ -8,7 +9,6 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Texture2D.h"
 #include "Framework/Application/SlateApplication.h"
-#include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "Input/Events.h"
 #include "Misc/AutomationTest.h"
@@ -133,14 +133,6 @@ namespace ck_texture_debugger_scene_audit_authored_tests
         TSharedPtr<SWindow> Window;
         TSharedPtr<SCkUiTable> ContextTable;
         FVector2D OriginalCursor;
-    };
-
-    struct FClipboardTextScope final
-    {
-        FClipboardTextScope() { FPlatformApplicationMisc::ClipboardPaste(OriginalText); }
-        ~FClipboardTextScope() { FPlatformApplicationMisc::ClipboardCopy(*OriginalText); }
-
-        FString OriginalText;
     };
 
     auto Tick_Slate(FSlateApplication& InSlate) -> void
@@ -458,10 +450,10 @@ auto FCkTextureDebugger_SceneAudit_ContextCommands::RunTest(const FString&) -> b
         return false;
     }
 
-    FClipboardTextScope Clipboard;
+    FCk_ClipboardCapture_Scope Clipboard;
     Route_MouseClick(Slate, CopyPathGeometry.GetAbsolutePosition() + CopyPathGeometry.GetAbsoluteSize() * 0.5f, EKeys::LeftMouseButton);
-    FString CopiedText;
-    FPlatformApplicationMisc::ClipboardPaste(CopiedText);
+    TestEqual(TEXT("Copy component path copies exactly once"), Clipboard.Get_CopyCount(), 1);
+    FString CopiedText = Clipboard.Get_Text();
     TestEqual(TEXT("Copy component path remains targeted at the row that opened the popup"), CopiedText, ComponentB->GetPathName());
     TestFalse(TEXT("Copy component path does not retarget to selected row A"), CopiedText == ComponentA->GetPathName());
 
@@ -488,7 +480,8 @@ auto FCkTextureDebugger_SceneAudit_ContextCommands::RunTest(const FString&) -> b
     }
 
     Route_MouseClick(Slate, CopySummaryGeometry.GetAbsolutePosition() + CopySummaryGeometry.GetAbsoluteSize() * 0.5f, EKeys::LeftMouseButton);
-    FPlatformApplicationMisc::ClipboardPaste(CopiedText);
+    TestEqual(TEXT("Copy audit summary copies exactly once"), Clipboard.Get_CopyCount(), 2);
+    CopiedText = Clipboard.Get_Text();
     TestTrue(FString::Printf(TEXT("Copy audit summary remains targeted at the row that opened the popup; clipboard=[%s]"), *CopiedText),
              CopiedText.Contains(TEXT("ContextActor_B")) && CopiedText.Contains(TEXT("ContextComponent_B"))
                  && CopiedText.Contains(ComponentB->GetPathName()));
