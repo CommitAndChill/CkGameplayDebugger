@@ -111,6 +111,9 @@ Compose multi-field clipboard payloads with newlines so the user can paste a
 "give me everything about this thing" summary into a bug report. See
 `SCkGoapDebug_HistoryRail.cpp` for the canonical example.
 
+Copy through `ck::clipboard::Copy` (CkCore), never `FPlatformApplicationMisc`. Specs wrap the
+action in `FCk_ClipboardCapture_Scope` and assert on `Get_Text()`; they never touch the OS clipboard.
+
 ## Entity references — always use `SCkDebug_EntityRef`
 
 Any time a debugger renders an `FCk_Handle` to the user, use
@@ -550,8 +553,8 @@ Follow CkFoundation conventions (see `CkFoundation/CLAUDE.md`):
 ### Build.cs
 
 Most debugger modules already depend on `CkDebuggerCommon`, which transitively
-brings `Slate`, `SlateCore`, `EditorStyle`, `AppFramework`, `ApplicationCore`
-(for `FPlatformApplicationMisc::ClipboardCopy`), and editor-gated `ToolMenus`.
+brings `Slate`, `SlateCore`, `EditorStyle`, `AppFramework`, `ApplicationCore`,
+and editor-gated `ToolMenus`.
 For the schema's `GetContextMenuActions`, you don't need to add `ToolMenus`
 yourself — call `ck::DebugCopyMenu::AddCopyEntryToToolMenu` and the helper
 handles it.
