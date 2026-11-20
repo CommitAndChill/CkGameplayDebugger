@@ -1,6 +1,7 @@
 #include "CkTextureDebugger/Window/SCkTextureDebugger_SceneAuditTable.h"
 #include "CkTextureDebugger/Window/SCkTextureDebugger_TextureHealthTable.h"
 
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkSlateLayout/SCkUiTable.h"
 #include "CkSlateLayout/CkFlexText.h"
@@ -12,7 +13,6 @@
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
-#include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -118,14 +118,6 @@ namespace ck_texture_debugger_ux_tests
         TSharedPtr<SWindow> Window;
         TSharedPtr<SCkUiTable> ContextTable;
         FVector2D OriginalCursor;
-    };
-
-    struct FClipboardTextScope final
-    {
-        FClipboardTextScope() { FPlatformApplicationMisc::ClipboardPaste(OriginalText); }
-        ~FClipboardTextScope() { FPlatformApplicationMisc::ClipboardCopy(*OriginalText); }
-
-        FString OriginalText;
     };
 
     auto TickSlate(FSlateApplication& InSlate) -> void
@@ -572,10 +564,10 @@ bool FCkTextureDebugger_Ux_TextureHealthContextMenuTarget::RunTest(const FString
     if (!TestTrue(TEXT("Native copy-details entry is mounted in Slate's hit-test path"), Slate.GeneratePathToWidgetUnchecked(CopyButton.ToSharedRef(), CopyButtonPath))
         || !TestTrue(TEXT("Native copy-details entry has nonzero arranged geometry"), CopyButtonGeometry.GetAbsoluteSize().X > 0.0f && CopyButtonGeometry.GetAbsoluteSize().Y > 0.0f)) { return false; }
 
-    FClipboardTextScope Clipboard;
+    FCk_ClipboardCapture_Scope Clipboard;
     RouteMouseClick(Slate, CopyButtonPosition, EKeys::LeftMouseButton);
-    FString CopiedText;
-    FPlatformApplicationMisc::ClipboardPaste(CopiedText);
+    TestEqual(TEXT("Copy details copies exactly once"), Clipboard.Get_CopyCount(), 1);
+    const FString CopiedText = Clipboard.Get_Text();
     TestTrue(TEXT("Context action retains its original row B target after selection changes to A"), CopiedText.Contains(TEXT("ContextTarget_B"))
         && CopiedText.Contains(TEXT("ContextTarget_B_Material")) && CopiedText.Contains(TEXT("ContextTarget_B_Format")));
     TestFalse(TEXT("Context action does not retarget the copied details to A"), CopiedText.Contains(TEXT("ContextTarget_A")));

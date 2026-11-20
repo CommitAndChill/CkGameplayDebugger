@@ -4,6 +4,7 @@
 #include "CkAStarDebugger/ViewModel/CkAStarDebugger_ViewModel.h"
 #include "CkAStarDebugger/Window/SCkAStarDebugger_StatsPanel.h"
 #include "CkAStarDebugger/Window/SCkAStarDebugger_SearchHistory.h"
+#include "CkCore/Clipboard/CkClipboard_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/World/CkEcsWorld.h"
@@ -14,7 +15,6 @@
 
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformTime.h"
-#include "HAL/PlatformApplicationMisc.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -159,6 +159,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 auto FCkAStarDebugger_AuthoredShell::RunTest(const FString&) -> bool
 {
     using namespace ck_astar_debugger_authored_shell_tests;
+    FCk_ClipboardCapture_Scope Clipboard;
 
     if (NOT FSlateApplication::IsInitialized())
     {
@@ -261,13 +262,12 @@ auto FCkAStarDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && TaggedText(StatsView->GetRegion(TEXT("main")), TEXT("astar-stats-cell-g")) == TEXT("7.0"));
     TSharedPtr<SWidget> StatsCopy = FindTaggedWidget(
         StatsView->GetRegion(TEXT("main")), FName{TEXT("astar-stats-copy")});
-    FString CopiedStats;
-    FPlatformApplicationMisc::ClipboardCopy(TEXT("unchanged"));
+    const int32 CopiesBeforeStats = Clipboard.Get_CopyCount();
     const bool StatsCopyClicked = StatsCopy.IsValid() && Click(
         Slate, StatsCopy.ToSharedRef(), StatsCopy->GetCachedGeometry().GetLocalSize() * 0.5f);
-    FPlatformApplicationMisc::ClipboardPaste(CopiedStats);
+    const FString CopiedStats = Clipboard.Get_Text();
     TestTrue(TEXT("physical authored stats copy preserves information-copy parity"),
-        StatsCopyClicked && CopiedStats.Contains(TEXT("iterations: 3"))
+        StatsCopyClicked && Clipboard.Get_CopyCount() == CopiesBeforeStats + 1 && CopiedStats.Contains(TEXT("iterations: 3"))
             && CopiedStats.Contains(TEXT("g-score:    7.0")));
 
     auto HistoryA = FCkAStarDebugger_HistoryEntry{};
@@ -296,13 +296,12 @@ auto FCkAStarDebugger_AuthoredShell::RunTest(const FString&) -> bool
     TickSlate(Slate);
     TSharedPtr<SWidget> HistoryCopy = FindTaggedWidget(
         HistoryView->GetRegion(TEXT("main")), FName{TEXT("astar-history-copy")});
-    FString CopiedHistory;
-    FPlatformApplicationMisc::ClipboardCopy(TEXT("unchanged"));
+    const int32 CopiesBeforeHistory = Clipboard.Get_CopyCount();
     const bool HistoryCopyClicked = HistoryCopy.IsValid() && Click(
         Slate, HistoryCopy.ToSharedRef(), HistoryCopy->GetCachedGeometry().GetLocalSize() * 0.5f);
-    FPlatformApplicationMisc::ClipboardPaste(CopiedHistory);
+    const FString CopiedHistory = Clipboard.Get_Text();
     TestTrue(TEXT("physical authored history copy routes the selected production record"),
-        HistoryCopyClicked && CopiedHistory.Contains(TEXT("A* search [Failed]"))
+        HistoryCopyClicked && Clipboard.Get_CopyCount() == CopiesBeforeHistory + 1 && CopiedHistory.Contains(TEXT("A* search [Failed]"))
             && CopiedHistory.Contains(TEXT("frame:      22")));
 
     HostWindow->Resize(FVector2D{520.0f, 600.0f});
@@ -442,14 +441,12 @@ auto FCkAStarDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && NOT HeldStats->Get_AuthoredView().IsValid() && NOT HeldHistory->Get_AuthoredView().IsValid());
     StatsCopy->SlatePrepass();
     HistoryCopy->SlatePrepass();
-    FPlatformApplicationMisc::ClipboardCopy(TEXT("released-actions-inert"));
+    const int32 CopiesBeforeRelease = Clipboard.Get_CopyCount();
     StaticCastSharedPtr<SButton>(StatsCopy)->SimulateClick();
     StaticCastSharedPtr<SButton>(HistoryCopy)->SimulateClick();
-    FString ClipboardAfterRelease;
-    FPlatformApplicationMisc::ClipboardPaste(ClipboardAfterRelease);
     TestTrue(TEXT("held authored stats and history actions revoke dispatch after owner release"),
         StatsCopy.IsValid() && HistoryCopy.IsValid()
-            && ClipboardAfterRelease == TEXT("released-actions-inert"));
+            && Clipboard.Get_CopyCount() == CopiesBeforeRelease);
     HeldModel->Set_SelectedCellIndex(-1);
     const FVector2D Position = HeldGeometry.LocalToAbsolute(FVector2D{18.0f, 18.0f});
     const FPointerEvent DetachedClick(0, FSlateApplication::CursorPointerIndex, Position, Position,
