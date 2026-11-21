@@ -591,13 +591,13 @@ auto
 	//   "class ck::FProcessor_Inventory_HandleRequests"
 	//   "class ck::TProcessor_AttributeModifier_EndPlayAll_CurrentMinMax<struct ck::TFragment_ByteAttributeModifier>"
 	//   "class ck::TProcessor_Attribute_Replicate_All<struct ck::TFragment_ByteAttribute,struct FCk_RepData_ByteAttributes>"
-	//   "class ck::TProcessor_SceneNode_Update<struct ck::FTag_SceneNode_Layer0>"
+	//   "class ck::TProcessor_SceneNode_Update<0>"
 	//
 	// Goal:
 	//   Inventory: HandleRequests
 	//   AttributeModifier_EndPlayAll: CurrentMinMax<Byte>
 	//   Attribute_Replicate: All<Byte>
-	//   SceneNode: Update<Layer0>
+	//   SceneNode: Update<0>
 
 	auto StripNamespaceDecorations = [](FString& InOut)
 	{

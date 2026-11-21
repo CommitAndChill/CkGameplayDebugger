@@ -65,18 +65,7 @@ namespace ck_inspector_scenenode
     auto Diff(const bool bMarked) -> FLinearColor { return bMarked ? CkStyle::Accent() : CkStyle::Text(); }
     auto Get_LayerIndex(const FCk_Handle& E) -> int32
     {
-        if (ck::Is_NOT_Valid(E)) { return INDEX_NONE; }
-        if (E.Has<ck::FTag_SceneNode_Layer0>()) { return 0; }
-        if (E.Has<ck::FTag_SceneNode_Layer1>()) { return 1; }
-        if (E.Has<ck::FTag_SceneNode_Layer2>()) { return 2; }
-        if (E.Has<ck::FTag_SceneNode_Layer3>()) { return 3; }
-        if (E.Has<ck::FTag_SceneNode_Layer4>()) { return 4; }
-        if (E.Has<ck::FTag_SceneNode_Layer5>()) { return 5; }
-        if (E.Has<ck::FTag_SceneNode_Layer6>()) { return 6; }
-        if (E.Has<ck::FTag_SceneNode_Layer7>()) { return 7; }
-        if (E.Has<ck::FTag_SceneNode_Layer8>()) { return 8; }
-        if (E.Has<ck::FTag_SceneNode_Layer9>()) { return 9; }
-        return INDEX_NONE;
+        return UCk_Utils_SceneNode_UE::Get_Depth(E).Get(INDEX_NONE);
     }
 
     auto GetHandleIdentityKey(const FCk_Handle& InHandle) -> FString
