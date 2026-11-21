@@ -337,7 +337,7 @@ auto SCkDebuggerPanel_EntityList::Build_FeatureRail(bool InRightFlank) -> TShare
                 [
                     SNew(SImage)
                     .Image(Brush)
-                    .ColorAndOpacity(Color)
+                    .ColorAndOpacity_Lambda([Color]() { return FSlateColor{CkStyle::InkOf(Color)}; })
                     .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
                     {
                         const auto Size = ck::debug_axes::Apply_IconSize(14.0f);
