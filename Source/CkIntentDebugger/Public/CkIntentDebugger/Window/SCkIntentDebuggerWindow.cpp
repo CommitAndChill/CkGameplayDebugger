@@ -293,7 +293,7 @@ auto
 {
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::Bg1())
+        .BorderBackgroundColor_Lambda([]() { return CkStyle::Bg1(); })
         .Padding(FMargin{ck_intent_debugger_window::PadS})
         [
             SNew(SHorizontalBox)
@@ -311,7 +311,7 @@ auto
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Source:")))
                     .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                    .ColorAndOpacity(CkStyle::TextDim())
+                    .ColorAndOpacity_Lambda([]() { return CkStyle::TextDim(); })
             ]
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -830,7 +830,7 @@ auto
         [
             SNew(STextBlock)
                 .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                .ColorAndOpacity(CkStyle::TextMute())
+                .ColorAndOpacity_Lambda([]() { return CkStyle::TextMute(); })
                 .Text(FText::FromString(TEXT("none")))
         ];
 
