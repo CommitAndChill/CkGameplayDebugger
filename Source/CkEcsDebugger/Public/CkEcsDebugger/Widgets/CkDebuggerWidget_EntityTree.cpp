@@ -267,7 +267,7 @@ public:
                 SNew(SCkDebug_Icon)
                 .Brush(IdentityBrush)
                 .Meaning(FText::FromString(IdentityMeaning))
-                .ColorAndOpacity(Get_IdentityColor())
+                .ColorAndOpacity(this, &SCkDebuggerEntityTreeRow::Get_IdentityColor)
                 .Size(FVector2D(14.0f, 14.0f))
             ];
         }
@@ -454,7 +454,7 @@ private:
         if (Representative.IsValid() && Representative->IsInternal)
         {
             if (const auto* Visual = ck_debugger_entity_tree::Get_FeatureVisuals().Find(Representative->InternalFeatureId))
-            { return Visual->Color; }
+            { return CkStyle::InkOf(Visual->Color); }
         }
 
         return CkStyle::TextDim();
@@ -539,7 +539,8 @@ private:
             { return; }
 
             const auto IsRollup = InRollupCount > 0;
-            const auto Tint = Visual->Color.CopyWithNewOpacity(IsRollup ? 0.45f : 1.0f);
+            const auto Hue = Visual->Color;
+            const auto Opacity = IsRollup ? 0.45f : 1.0f;
             const auto Tooltip = IsRollup
                 ? FString::Printf(TEXT("%s ×%d (rolled up from internals)"), *InFeatureId.ToString(), InRollupCount)
                 : InFeatureId.ToString();
@@ -553,7 +554,7 @@ private:
             [
                 SNew(SImage)
                 .Image(Brush)
-                .ColorAndOpacity(Tint)
+                .ColorAndOpacity_Lambda([Hue, Opacity]() { return FSlateColor{CkStyle::InkOf(Hue).CopyWithNewOpacity(Opacity)}; })
                 .DesiredSizeOverride_Static(&ck_debugger_entity_tree::Get_FeatureBadgeSize)
             ];
 

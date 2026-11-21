@@ -2,6 +2,7 @@
 
 #include "CkCore/Ensure/CkEnsure.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerPaletteFollow.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "HAL/FileManager.h"
@@ -22,6 +23,7 @@ auto FCkDebuggerLauncherStyle::Initialize() -> void
 
     _StyleInstance = Create();
     FSlateStyleRegistry::RegisterSlateStyle(*_StyleInstance);
+    ck::debug_style::Follow_Palette(_StyleInstance.ToSharedRef(), [] { return Create(); });
 }
 
 auto FCkDebuggerLauncherStyle::Shutdown() -> void
@@ -29,6 +31,7 @@ auto FCkDebuggerLauncherStyle::Shutdown() -> void
     if (NOT _StyleInstance.IsValid())
     { return; }
 
+    ck::debug_style::Unfollow_Palette(*_StyleInstance);
     FSlateStyleRegistry::UnRegisterSlateStyle(*_StyleInstance);
     _StyleInstance.Reset();
 }

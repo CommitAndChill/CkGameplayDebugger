@@ -1,6 +1,7 @@
 #include "CkGoapDebuggerStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerPaletteFollow.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -23,6 +24,7 @@ auto
     {
         StyleInstance = Create();
         FSlateStyleRegistry::RegisterSlateStyle(*StyleInstance);
+        ck::debug_style::Follow_Palette(StyleInstance.ToSharedRef(), [] { return Create(); });
     }
 }
 
@@ -33,6 +35,7 @@ auto
 {
     if (StyleInstance.IsValid())
     {
+        ck::debug_style::Unfollow_Palette(*StyleInstance);
         FSlateStyleRegistry::UnRegisterSlateStyle(*StyleInstance);
         StyleInstance.Reset();
     }

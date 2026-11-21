@@ -3,6 +3,7 @@
 #include "CkSaveDebugger/Visualizer/CkSaveDebugger_Visualizer.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include <Editor.h>
 #include <PrimitiveDrawInterface.h>
@@ -91,6 +92,8 @@ auto
 
     if (GEditor != nullptr && GEditor->PlayWorld != nullptr)
     { return; }
+
+    const auto ScenePalette = CkStyle::FScopedPalette{ECk_Style_Palette::Dark};
 
     const auto Rows = ck::save_debugger_viz::Get_Rows();
     if (NOT Rows.IsValid())

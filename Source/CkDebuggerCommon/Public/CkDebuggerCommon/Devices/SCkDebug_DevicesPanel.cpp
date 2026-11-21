@@ -44,7 +44,7 @@ auto
     [
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::BgRoot())
+        .BorderBackgroundColor_Lambda([]() { return CkStyle::BgRoot(); })
         [
             SNew(SScrollBox)
 
@@ -101,7 +101,7 @@ auto
                     SNew(STextBlock)
                         .Text(InArgs._NoteText)
                         .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                        .ColorAndOpacity(CkStyle::TextMute())
+                        .ColorAndOpacity_Lambda([]() { return CkStyle::TextMute(); })
                         .Visibility(InArgs._NoteText.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
                 ]
             ]

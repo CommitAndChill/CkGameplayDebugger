@@ -47,6 +47,8 @@ auto
         const UCkEqsDebuggerSettings*           InSettings)
     -> void
 {
+    const auto ScenePalette = CkStyle::FScopedPalette{ECk_Style_Palette::Dark};
+
     // Master toggle off OR no settings OR no world: clear and bail.
     if (NOT IsValid(InWorld) || InSettings == nullptr || NOT InSettings->Show_Overlay)
     {

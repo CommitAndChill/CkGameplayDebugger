@@ -196,8 +196,25 @@ auto
         const float      InDeltaTime)
     -> void
 {
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
     DoPoll_AuthoredPresentation(InCurrentTime);
+}
+
+auto
+    SCkDebugOverlay_Root::
+    OnPaint(
+        const FPaintArgs& InArgs,
+        const FGeometry& InAllottedGeometry,
+        const FSlateRect& InCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32 InLayerId,
+        const FWidgetStyle& InWidgetStyle,
+        bool InParentEnabled) const
+    -> int32
+{
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
+    return SCompoundWidget::OnPaint(InArgs, InAllottedGeometry, InCullingRect, OutDrawElements, InLayerId, InWidgetStyle, InParentEnabled);
 }
 
 // ====================================================================================================================

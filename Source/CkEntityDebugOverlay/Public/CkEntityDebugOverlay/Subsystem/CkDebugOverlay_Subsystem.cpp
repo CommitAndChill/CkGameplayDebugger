@@ -17,6 +17,7 @@
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_FocusCard.h"
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_SelectionHud.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -337,6 +338,7 @@ auto
     DoActivate()
     -> void
 {
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     if (_RootWidget.IsValid())
     { return; }
 
@@ -487,6 +489,7 @@ auto
         float InDeltaSeconds)
     -> bool
 {
+    const auto Palette = CkStyle::FScopedPalette{CkStyle::GetOverlayPalette()};
     if (NOT _RootWidget.IsValid())
     { return true; } // keep ticking; deactivation will unregister us
 

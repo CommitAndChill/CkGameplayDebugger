@@ -392,7 +392,7 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
             SNew(SCkDebug_Icon)
             .Brush(Brush)
             .Meaning(FText::FromName(FeatureId))
-            .ColorAndOpacity(Visual->Color)
+            .ColorAndOpacity_Lambda([Hue = Visual->Color]() { return FSlateColor{CkStyle::InkOf(Hue)}; })
             .Size(ck_debugger_page_archetypes::IconSquare(11.0f))
         ];
         ++BadgeCount;

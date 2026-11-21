@@ -124,7 +124,8 @@ protected:
 
 	/**
 	 * The Layer-B style selection changed structurally (profile applied, axis cycled,
-	 * Editor Preferences edit). Route this to the window's existing rebuild entry point.
+	 * Editor Preferences edit), or the CkStyle palette flipped between Light and Dark with the
+	 * editor theme. Route this to the window's existing rebuild entry point.
 	 * Default is a no-op — visual axes already apply live and need no rebuild.
 	 */
 	virtual auto OnStyleRevisionChanged() -> void;
@@ -144,6 +145,7 @@ private:
 
 	// Transient, like the revision itself — resets with the widget, never serialized.
 	uint32 _LastSeenStyleRevision = 0;
+	bool   _LastSeenLight = false;
 };
 
 // ====================================================================================================================
