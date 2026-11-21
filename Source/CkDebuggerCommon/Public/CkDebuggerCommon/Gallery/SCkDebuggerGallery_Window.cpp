@@ -28,6 +28,34 @@ auto
 
 	_Sections = FCkDebuggerGallery_Registry::Get().CreateAll();
 
+	DoBuild_Content();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkDebuggerGallery_Window::
+	OnStyleRevisionChanged()
+	-> void
+{
+	// Visual axes already apply live; only a palette flip leaves colours baked into the tree.
+	if (CkStyle::IsLight() == _BuiltLight)
+	{ return; }
+
+	const auto ScrollOffset = _ScrollBox.IsValid() ? _ScrollBox->GetScrollOffset() : 0.0f;
+	DoBuild_Content();
+	_ScrollBox->SetScrollOffset(ScrollOffset);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkDebuggerGallery_Window::
+	DoBuild_Content()
+	-> void
+{
+	_BuiltLight = CkStyle::IsLight();
+
 	ChildSlot
 	[
 		SNew(SBorder)

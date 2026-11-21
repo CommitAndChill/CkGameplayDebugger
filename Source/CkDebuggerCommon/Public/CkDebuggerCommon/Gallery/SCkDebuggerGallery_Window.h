@@ -25,7 +25,11 @@ public:
 	virtual auto Get_WindowId() const -> FName override { return WindowId; }
 	virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Widget Gallery")); }
 
+protected:
+	virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
+	auto DoBuild_Content() -> void;
 	auto Build_LeftRail() -> TSharedRef<SWidget>;
 	auto Build_Body() -> TSharedRef<SWidget>;
 	auto Build_TopBar() -> TSharedRef<SWidget>;
@@ -34,6 +38,7 @@ private:
 	TArray<TSharedRef<ICkDebuggerGallery_Section>> _Sections;
 	TArray<TSharedPtr<class SWidget>> _SectionPanels;
 	TSharedPtr<SScrollBox> _ScrollBox;
+	bool _BuiltLight = false;
 };
 
 // ====================================================================================================================
