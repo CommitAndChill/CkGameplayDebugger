@@ -122,7 +122,7 @@ auto
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("Refresh:")))
 			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+			.ColorAndOpacity_Lambda([]() { return CkStyle::TextMute(); })
 		]
 
 		+ SHorizontalBox::Slot()
@@ -208,7 +208,7 @@ auto
 			SNew(STextBlock)
 			.Text_Lambda([WindowId]() { return ModeLabel(Get_CurrentMode(WindowId)); })
 			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkStyle::Text()))
+			.ColorAndOpacity_Lambda([]() { return CkStyle::Text(); })
 		];
 }
 
@@ -280,7 +280,7 @@ auto
 			SNew(STextBlock)
 			.Text_Lambda([WindowId]() { return RateLabel(Get_CurrentRate(WindowId)); })
 			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkStyle::Text()))
+			.ColorAndOpacity_Lambda([]() { return CkStyle::Text(); })
 		];
 }
 

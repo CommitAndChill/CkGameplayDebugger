@@ -143,7 +143,7 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
             SNew(STextBlock)
                 .Text(this, &SCkDebug_WindowChrome::Get_DefaultStatusText)
                 .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
-                .ColorAndOpacity(CkStyle::TextMute()));
+                .ColorAndOpacity_Lambda([]() { return CkStyle::TextMute(); }));
 
     const TSharedRef<SWidget> CommandBar =
         SNew(SCkDebug_CommandBar)
