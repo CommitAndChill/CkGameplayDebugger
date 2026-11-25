@@ -26,6 +26,13 @@
       "added": "2026-10-02"
     },
     {
+      "test": "Ck.UiAuthoring.IntentDebugger.InputHudControls",
+      "status": "flaky",
+      "reason": "FLAKY (order-coupled): 'Mounted click did not reach its requested control: tag=intent-hud-frame-next ... down-target=0 leaf=STextBlock' (CkIntentDebugger_InputHudControls.spec.cpp:187, :330) fails only when it runs after Ck.GoapDebugger.AgentColumn.Authored.PIE (CkTests) in the same renderer editor; green alone and with MountedToolkit.TwoTabsModesAndCapture when AgentColumn does not run first. Routed-click class; the follow-up is in the CkTests AgentColumn entry.",
+      "evidence": "CkPlugins2 (a CkPlugins worktree): CkTests e7218414 (superproject pin), CkFoundation light-theme #25/#27 tips, CkGameplayDebugger #8 df834721, engine feature/light-theme-ink; on 2026-11-21 the same group failed identically with CkFoundation and CkGameplayDebugger at origin/dev. UnrealToolbox v1.88 (Gate-Overnight 2026-11-21) and v1.91 (Gate-Rebase1124, Gate-ModuleMove1124, Gate-ShouldFix1124, 2026-11-24), full gates F F F F, load: clean; v1.91 NEW re-run in one fresh editor: AgentColumn P, TwoTabsModesAndCapture F, InputHudControls F (both ran after AgentColumn); TwoTabsModesAndCapture + InputHudControls alone without AgentColumn: P P (Pair-NoPie-1124, Pair-NoPie-ShouldFix1124)",
+      "added": "2026-11-24"
+    },
+    {
       "test": "Ck.UiAuthoring.SchedulerDebugger.Inspector.AuthoredComposition",
       "status": "flaky",
       "reason": "FLAKY: green alone (renderer pass). 'Repeated authored dependency mounts a real button'. One of six routed-click UI tests that all failed together in G4's renderer pass (only 2 lanes on a loaded machine; 16 renderer-pass failures vs 10-13 in G1-G3) and all passed in G1-G3 - likely one shared environmental cause. Drop the entry if it never recurs.",
