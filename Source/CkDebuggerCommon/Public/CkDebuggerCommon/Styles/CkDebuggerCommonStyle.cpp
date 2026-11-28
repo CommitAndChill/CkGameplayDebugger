@@ -1,5 +1,7 @@
 #include "CkDebuggerCommonStyle.h"
 
+#include "CkCore/Ensure/CkEnsure.h"
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkEditorTools/Style/CkStyle.h"
 

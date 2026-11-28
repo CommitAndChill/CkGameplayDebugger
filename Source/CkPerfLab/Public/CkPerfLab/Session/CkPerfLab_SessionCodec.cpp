@@ -683,7 +683,8 @@ namespace ck::perf_lab
 
             for (const auto& Pair : CvarObject->Values)
             {
-                Cvars.Add(Pair.Key, Pair.Value->AsString());
+                const auto CvarName = FString{FStringView{*Pair.Key, Pair.Key.Len()}};
+                Cvars.Add(CvarName, Pair.Value->AsString());
             }
 
             Environment.Set_ForcedCvars(Cvars);
